@@ -1,0 +1,15 @@
+repos:
+  - repo: local
+    hooks:
+      - id: docker-compose-check
+        name: Validate Docker Compose
+        entry: docker compose config
+        language: system
+        files: ^docker-compose\.ya?ml$
+        pass_filenames: false
+
+      - id: secret-grabber
+        name: Check for Hardcoded Secrets
+        entry: bash -c '! grep -rE "AWS_|SECRET|PASSWORD|TOKEN|PRIVATE KEY" --exclude=.pre-commit-config.yaml .env*'
+        language: system
+        pass_filenames: false
