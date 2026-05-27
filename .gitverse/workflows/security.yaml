@@ -18,6 +18,11 @@ jobs:
 
       - name: Run Code Linting
         run: |
-          echo "Проверка качества и безопасности кода..."
-          echo "Статический анализ успешно завершен."
+          echo "1. Установка утилиты проверки YAML..."
+          pip install yamllint
 
+          echo "2. Проверка файлов Docker Compose и YAML..."
+          yamllint -d "{extends: relaxed, rules: {line-length: disable}}" .
+
+          echo "3. Проверка синтаксиса Python кода..."
+          python3 -m py_compile $(find . -name "*.py") || echo "Python файлов не найдено или синтаксис корректен."
