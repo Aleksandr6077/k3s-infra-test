@@ -11,10 +11,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'config'
-          hide-progress: false
-          format: 'table'
-          exit-code: '0'
+      - name: Run Trivy via Docker
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/apps \
+            aquasec/trivy:0.50.0 \
+            config /apps
