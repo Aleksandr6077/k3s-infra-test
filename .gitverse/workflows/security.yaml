@@ -11,13 +11,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Secret Scanner
-        run: |
-          echo "Запуск проверки на наличие утекших токенов и паролей..."е
-          grep -rni "password=" . || echo "Секреты в коде не обнаружены."
-
-      - name: Run Code Linting
-        run: |
-          echo "Проверка качества и безопасности кода..."
-          # Если в проекте Python/JS/Docker, тут вызывается соответствующий линтер
-          echo "Статический анализ успешно завершен."
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          hide-progress: false
+          format: 'table'
+          exit-code: '0'
