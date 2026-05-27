@@ -11,9 +11,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Trivy via Docker
+      - name: Install Trivy CLI
         run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/apps \
-            aquasec/trivy:0.50.0 \
-            config /apps
+          echo "Скачиваем и устанавливаем Trivy CLI..."
+          curl -sfL https://githubusercontent.com | sh -s -- -b /usr/local/bin v0.50.0
+
+      - name: Run Trivy Scan
+        run: |
+          echo "Запуск сканирования конфигураций..."
+          /usr/local/bin/trivy config .
