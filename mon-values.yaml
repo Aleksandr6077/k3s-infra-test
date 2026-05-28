@@ -1,0 +1,18 @@
+prometheus:
+  prometheusSpec:
+    retention: 1d
+
+alertmanager:
+  enabled: false
+
+grafana:
+  adminPassword: "admin"
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - grafana.local
+    path: /
+
+nodeExporter:
+  enabled: false
