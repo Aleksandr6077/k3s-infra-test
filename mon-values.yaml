@@ -16,3 +16,4 @@ grafana:
 
 nodeExporter:
   enabled: false
+  #Отключили
