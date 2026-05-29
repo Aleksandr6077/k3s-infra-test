@@ -1,0 +1,38 @@
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: 'filesystem'
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        index:
+          period: 24h
+          prefix: index_
+        object_store: filesystem
+        store: tsdb
+        schema: v13
+
+singleBinary:
+  replicas: 1
+
+# Зануляем распределенные компоненты для монолитного режима(в сингл лабе этого достаточно)
+write:
+  replicas: 0
+read:
+  replicas: 0
+backend:
+  replicas: 0
+
+gateway:
+  enabled: false
+monitoring:
+  dashboards:
+    enabled: false
+  rules:
+    enabled: false
+  alerts:
+    enabled: false
