@@ -9,7 +9,8 @@ repos:
         pass_filenames: false
 
       - id: secret-grabber
-        name: Check for Hardcoded Secrets
-        entry: bash -c '! grep -rE "AWS_|SECRET|PASSWORD|TOKEN|PRIVATE KEY" --exclude=.pre-commit-config.yaml .env*'
+        name: Check for Hardcoded Secrets (Trivy)
+        # Ищем секреты силами Trivy
+        entry: trivy fs --scanners secret --exit-code 1 .
         language: system
         pass_filenames: false
