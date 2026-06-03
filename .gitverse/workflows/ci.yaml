@@ -1,4 +1,4 @@
-name: Simple CI checks
+name: Simple CI
 
 on:
   push:
@@ -13,36 +13,42 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Скачиваем всю историю коммитов для честной работы Gitleaks
+          fetch-depth: 0 # Качаем всю историю для честной работы Gitleaks
 
+      # 1. СЕКЬЮРИТИ: Скачивание и запуск Gitleaks по твоим ссылкам
       - name: Run Gitleaks (Secret Scanner)
-        uses: gitleaks/gitleaks-action@v2.3.9
-        with:
-          scan-type: 'repo'
-          verbose: true
-          exit-code: 1
+        run: |
+          echo "Вычисляем актуальную версию и скачиваем Gitleaks..."
+          GITLEAKS_VERSION=$(curl -s "https://api.github.com/repos/gitleaks/gitleaks/releases/latest" | grep -Po '"tag_name": "v\K[0-9.]+')
+          wget -qO gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
+          sudo tar xf gitleaks.tar.gz -C /usr/local/bin gitleaks
+          rm -rf gitleaks.tar.gz
+          echo "Запускаем сканирование репозитория на утечку секретов..."
+          gitleaks detect --verbose --redact
 
+      # 2. СЕКЬЮРИТИ: Скачивание и запуск Trivy по твоим ссылкам
       - name: Run Trivy vulnerability scanner (IaC)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'config'
-          hide-progress: false
-          format: 'table'
-          exit-code: '1' # Уронит пайплайн, если найдет критические косяки безопасности
-          ignore-unfixed: true
-            
+        run: |
+          echo "Скачиваем и устанавливаем официальный .deb пакет Trivy..."
+          wget -q https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(lsb_release -sr)_Linux-64bit.deb
+          sudo dpkg -i trivy_*.deb
+          rm -f trivy_*.deb
+          echo "Запускаем сканирование IaC манифестов на уязвимости..."
+          trivy config --exit-code 1 --severity CRITICAL,HIGH .
+
+      # 3. ЛИНТЕР: Проверка синтаксиса YAML
       - name: Run YAMLLint
         uses: ibiqlik/action-yamllint@v3
         with:
           file_or_dir: '.'
 
-      # ИСПРАВЛЕНИЕ БАГА 1: Чистый запуск Kubeconform через официальный Docker-образ без wget и sudo
-      - name: Validate K8s Manifests via Kubeconform
-        uses: docker://ghcr.io/yannh/kubeconform:v0.7.0
-        with:
-          entrypoint: '/kubeconform'
-          # -ignore-missing-schemas: игнорируем кастомные Helm-values (Loki, Prometheus)
-          # -summary: выводим красивый короткий отчет по проверке
-          # apps/: проверяем только чистые манифесты приложений
-          args: '-summary -ignore-missing-schemas -strict apps/'
+      # 4. ВАЛИДАЦИЯ: Кроссплатформенная установка Kubeconform из официального экшена
+      - name: Set up Kubeconform
+        uses: bmuschko/setup-kubeconform@v1
+
+      # 5. ВАЛИДАЦИЯ: Запуск проверки манифестов приложений
+      - name: Validate apps manifests
+        run: kubeconform -summary -strict apps/
+
+
 
