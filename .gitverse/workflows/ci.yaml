@@ -7,49 +7,56 @@ on:
     branches: [ main, master ]
 
 jobs:
-  validate:
+  # ШАГ 1: Автоматическая сборка безопасного Docker-образа в облаке
+  build-ci-image:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Логинимся в Container Registry от GitVerse (используем встроенный токен пайплайна)
+      - name: Log in to GitVerse Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.gitverse.ru
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Собираем наш мультистейдж Dockerfile и пушим его с тегом latest
+      - name: Build and push DevOps Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: registry.gitverse.ru/${{ github.repository }}/devops-ci:latest
+
+  # ШАГ 2: Запуск тестов безопасности и валидации ВНУТРИ нашего нового образа
+  validate:
+    needs: build-ci-image # Ждем, пока соберется и запушится образ из первого шага
+    runs-on: ubuntu-latest
+    # Заставляем весь джоб крутиться внутри нашего собственного собранного контейнера
+    container:
+      image: registry.gitverse.ru/${{ github.repository }}/devops-ci:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 1. СЕКЬЮРИТИ: Скачивание и запуск Gitleaks
+      # Все сканеры уже лежат внутри образа, запускаем их напрямую без wget/curl за 0 секунд!
       - name: Run Gitleaks (Secret Scanner)
-        run: |
-          GITLEAKS_VERSION=$(curl -s "https://github.com" | grep -Po '"tag_name": "v\K[0-9.]+')
-          wget -qO gitleaks.tar.gz https://github.com{GITLEAKS_VERSION}_linux_x64.tar.gz
-          sudo tar xf gitleaks.tar.gz -C /usr/local/bin gitleaks
-          rm -rf gitleaks.tar.gz
-          gitleaks detect --verbose --redact
+        run: gitleaks detect --verbose --redact
 
-      # 2. СЕКЬЮРИТИ: Скачивание и запуск Trivy
       - name: Run Trivy vulnerability scanner (IaC)
-        run: |
-          wget -q https://github.com(lsb_release -sr)_Linux-64bit.deb
-          sudo dpkg -i trivy_*.deb
-          rm -f trivy_*.deb
-          trivy config --exit-code 1 --severity CRITICAL,HIGH .
+        run: trivy config --exit-code 1 --severity CRITICAL,HIGH .
 
-      # 3. ЛИНТЕР: Проверка синтаксиса YAML
       - name: Run YAMLLint
-        uses: ibiqlik/action-yamllint@v3
-        with:
-          file_or_dir: '.'
+        run: yamllint .
 
-      # 4. ВАЛИДАЦИЯ: Скачивание Kubeconform
-      - name: Setup Kubeconform
-        run: |
-          KUBECONFORM_VERSION=$(curl -s "https://api.github.com/repos/yannh/kubeconform/releases/latest" | grep -Po '"tag_name": "v\K[0-9.]+')
-          wget -qO kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz
-          sudo tar xf kubeconform.tar.gz -C /usr/local/bin kubeconform
-          rm -rf kubeconform.tar.gz
-          kubeconform -v
-
-      # 5. ВАЛИДАЦИЯ: Запуск проверки манифестов приложений
-      - name: Validate apps manifests
+      - name: Validate apps manifests via Kubeconform
         run: kubeconform -summary -strict apps/
+
 
 
 
