@@ -18,8 +18,11 @@ loki:
 
 singleBinary:
   replicas: 1
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    size: 10Gi
 
-# Зануляем распределенные компоненты для монолитного режима(в сингл лабе этого достаточно)
 write:
   replicas: 0
 read:
@@ -28,7 +31,8 @@ backend:
   replicas: 0
 
 gateway:
-  enabled: false
+  enabled: true
+
 monitoring:
   dashboards:
     enabled: false
@@ -36,3 +40,4 @@ monitoring:
     enabled: false
   alerts:
     enabled: false
+

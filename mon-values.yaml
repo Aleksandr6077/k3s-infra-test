@@ -1,12 +1,39 @@
 prometheus:
   prometheusSpec:
     retention: 1d
+    # ИСПРАВЛЕНИЕ: Добавляем прямой независимый сбор метрик в обход ServiceMonitor
+    additionalScrapeConfigs:
+      - job_name: 'node-exporter-k3s'
+        static_configs:
+          - targets: ['node-exporter.monitoring.svc.cluster.local:9100']
 
 alertmanager:
-  enabled: false
+  enabled: true
+  apiVersion: v2
+  spec:
+    retention: 120h
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname', 'cluster', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'null'
+      routes:
+      - matchers:
+        - severity = critical
+        receiver: 'telegram-alerts'
+    receivers:
+    - name: 'null'
+    - name: 'telegram-alerts'
 
 grafana:
-  adminPassword: "admin"
+  admin:
+    existingSecret: "grafana-admin-credentials"
+    userKey: "admin-user"
+    passwordKey: "admin-password"
   ingress:
     enabled: true
     ingressClassName: traefik
@@ -16,4 +43,14 @@ grafana:
 
 nodeExporter:
   enabled: false
-  #Отключили
+
+prometheus-node-exporter:
+  enabled: false
+
+kubeStateMetrics:
+  enabled: true
+
+
+
+
+
