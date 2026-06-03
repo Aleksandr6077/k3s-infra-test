@@ -1,0 +1,48 @@
+name: Simple CI checks
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Скачиваем всю историю коммитов для честной работы Gitleaks
+
+      - name: Run Gitleaks (Secret Scanner)
+        uses: gitleaks/gitleaks-action@v2.3.9
+        with:
+          scan-type: 'repo'
+          verbose: true
+          exit-code: 1
+
+      - name: Run Trivy vulnerability scanner (IaC)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          hide-progress: false
+          format: 'table'
+          exit-code: '1' # Уронит пайплайн, если найдет критические косяки безопасности
+          ignore-unfixed: true
+            
+      - name: Run YAMLLint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: '.'
+
+      # ИСПРАВЛЕНИЕ БАГА 1: Чистый запуск Kubeconform через официальный Docker-образ без wget и sudo
+      - name: Validate K8s Manifests via Kubeconform
+        uses: docker://ghcr.io/yannh/kubeconform:v0.7.0
+        with:
+          entrypoint: '/kubeconform'
+          # -ignore-missing-schemas: игнорируем кастомные Helm-values (Loki, Prometheus)
+          # -summary: выводим красивый короткий отчет по проверке
+          # apps/: проверяем только чистые манифесты приложений
+          args: '-summary -ignore-missing-schemas -strict apps/'
+
