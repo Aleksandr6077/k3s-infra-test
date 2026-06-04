@@ -1,65 +1,68 @@
-kind: pipeline
-type: docker
-name: security-and-notify
+name: Ci
 
-steps:
-  # 1. Проверка на секреты (GitLeaks)
-  - name: gitleaks-scan
-    image: zricethezav/gitleaks:latest
-    commands:
-      - gitleaks detect --verbose --source .
-    when:
-      event: [ push, pull_request ]
+# Триггеры запуска (адаптировано под ветку master)
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches: 
+      - master
+  workflow_dispatch:
 
-  # 2. Проверка манифестов Kubernetes (Trivy)
-  - name: trivy-scan
-    image: aquasec/trivy:latest
-    commands:
-      - trivy config --severity HIGH,CRITICAL --exit-code 1 .
-    when:
-      event: [ push, pull_request ]
+jobs:
+  devsecops_pipeline:
+    # Запуск на стандартном облачном раннере
+    runs-on: ubuntu-latest
 
-  # 3. (Kubeform/Kube-score)
-  - name: kubernetes-lint
-    image: zegl/kube-score:latest
-    commands:
-      - kube-score score *.yaml
-    when:
-      event: [ push, pull_request ]
+    steps:
+      # Шаг 1: Клонируем репозиторий в воркспейс раннера
+      - name: Клонируем репозиторий
+        uses: actions/checkout@v4
 
-  # 4. Уведомление в Telegram об успешном прохождении всех проверок
-  - name: notify-telegram-success
-    image: curlimages/curl:latest
-    environment:
-      TELEGRAM_TOKEN:
-        from_secret: TELEGRAM_TOKEN
-      TELEGRAM_CHAT_ID:
-        from_secret: TELEGRAM_CHAT_ID
-    commands:
-      - |
-        curl -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
-        -d "chat_id=${TELEGRAM_CHAT_ID}" \
-        -d "text=✅ Пайплайн проекта k3s-infra-test успешно пройден!%0AСборка: #${CI_BUILD_NUMBER}%0AКоммит: ${CI_COMMIT_MESSAGE}"
-    when:
-      status: [ success ]
-      event: [ push, pull_request ]
+      # Шаг 2: Проверка истории коммитов на зашитые пароли и токены
+      - name: Запуск GitLeaks (Поиск секретов)
+        uses: zricethezav/gitleaks-action@v2
+        # Не игнорируем ошибки: если секрет найден — пайплайн упадет
+        continue-on-error: false
 
-  # 5. Уведомление в Telegram, если какой-то из этапов безопасности упал
-  - name: notify-telegram-failure
-    image: curlimages/curl:latest
-    environment:
-      TELEGRAM_TOKEN:
-        from_secret: TELEGRAM_TOKEN
-      TELEGRAM_CHAT_ID:
-        from_secret: TELEGRAM_CHAT_ID
-    commands:
-      - |
-        curl -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
-        -d "chat_id=${TELEGRAM_CHAT_ID}" \
-        -d "text=❌ Пайплайн проекта k3s-infra-test завален!%0AПроверьте логи сборки #${CI_BUILD_NUMBER}.%0AАвтор: ${CI_COMMIT_AUTHOR}"
-    when:
-      status: [ failure ]
-      event: [ push, pull_request ]
+      # Шаг 3: Проверка манифестов Kubernetes/K3s на уязвимости безопасности
+      - name: Запуск Trivy Config Scan
+        uses: aquasec/trivy-action@master
+        with:
+          scan-type: 'config'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1' # Уронит пайплайн при критических проблемах
+
+      # Шаг 4: Валидация k8s манифестов на соответствие Best Practices через Docker
+      - name: Запуск Kube-score (Линтер манифестов)
+        run: |
+          docker run --rm -v $(pwd):/project -w /project zegl/kube-score:latest score *.yaml
+        continue-on-error: false
+
+      # Шаг 5: Отправка уведомления в Telegram при УСПЕШНОМ прохождении всех шагов
+      - name: Уведомление в Telegram (Успех)
+        if: success() # Сработает только если шаги 2, 3 и 4 завершились без ошибок
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
+          -d "chat_id=${TELEGRAM_CHAT_ID}" \
+          -d "text=✅ Пайплайн проекта k3s-infra-test успешно пройден!%0AКоммит: ${{ github.event.head_commit.message }}"
+
+      # Шаг 6: Отправка уведомления в Telegram при ПАДЕНИИ любого из шагов безопасности
+      - name: Уведомление в Telegram (Ошибка)
+        if: failure() # Сработает, если GitLeaks, Trivy или Kube-score нашли уязвимость
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
+          -d "chat_id=${TELEGRAM_CHAT_ID}" \
+          -d "text=❌ Пайплайн проекта k3s-infra-test завален!%0AПроверьте логи сборки безопасности в GitVerse.%0AАвтор коммита: ${{ github.actor }}"
+
+
 
 
 
