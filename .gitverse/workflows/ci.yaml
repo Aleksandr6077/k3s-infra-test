@@ -10,8 +10,8 @@ on:
 
 jobs:
   build-and-push:
-    # Исправлено: массив меток
-    runs-on: [self-hosted, ubuntu-latest]
+    # Исправлено
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

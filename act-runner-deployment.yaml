@@ -34,6 +34,8 @@ spec:
       labels:
         app: act-runner
     spec:
+      # Лечим сеть: заставляем под использовать сетевой стек напрямую, минуя NAT k3s
+      hostNetwork: true
       serviceAccountName: default
       containers:
         - name: runner
@@ -41,12 +43,11 @@ spec:
           imagePullPolicy: Always
           env:
             - name: INSTANCE_URL
-              value: "https://gitverse.ru/sc/"
+              value: "https://gitverse.ru"
             - name: RUNNER_NAME
               value: "looppc-k3s-runner"
             - name: RUNNER_LABELS
-              # Имя пользователя переведено в нижний регистр: aleksandr607
-              value: "ubuntu-latest:docker://hub.gitverse.ru/aleksandr607/custom-runner:latest"
+              value: "ubuntu-latest"
             - name: RUNNER_REGISTRATION_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -65,4 +66,5 @@ spec:
         - name: docker-socket
           hostPath:
             path: /var/run/docker.sock
+
 
