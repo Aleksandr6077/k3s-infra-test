@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runner-config
+  namespace: infra
+data:
+  config.yaml: |
+    log:
+      level: info
+    runner:
+      file: .runner
+      capacity: 2
+      envs: {}
+      timeout: 3h
+      shutdown_timeout: 5s
+    container:
+      network: host
+      privileged: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: act-runner
+  namespace: infra
+  labels:
+    app: act-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: act-runner
+  template:
+    metadata:
+      labels:
+        app: act-runner
+    spec:
+      serviceAccountName: default # Автоматически дает права на скачивание образов
+      containers:
+        - name: runner
+          image: gitverse.ru/gitverse/act-runner:latest # Официальный образ со скриншота
+          imagePullPolicy: Always
+          env:
+            - name: INSTANCE_URL
+              value: "https://gitverse.ru/sc/" # URL инстанса со скриншота
+            - name: RUNNER_NAME
+              value: "looppc-k3s-runner"
+            - name: RUNNER_LABELS
+              value: "ubuntu-latest:docker://hub.gitverse.ru/Aleksandr607/custom-runner:latest"
+            - name: RUNNER_REGISTRATION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: act-runner-token
+                  key: token
+          volumeMounts:
+            - name: config
+              mountPath: /config.yaml
+              subPath: config.yaml
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+      volumes:
+        - name: config
+          configMap:
+            name: runner-config
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock

@@ -1,61 +1,69 @@
-name: Simple Ci
+name: Build Custom Runner & Notify
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+    branches:
+      - master
+    paths:
+      - 'Dockerfile.runner'
+      - '.gitverse/workflows/build-runner-and-notify.yaml'
 
 jobs:
-  # ШАГ 1: Автоматическая сборка безопасного Docker-образа в облаке
-  build-ci-image:
+  build-and-push:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Логинимся в Container Registry от GitVerse (используем встроенный токен пайплайна)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to GitVerse Container Registry
         uses: docker/login-action@v3
         with:
-          registry: registry.gitverse.ru
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: hub.gitverse.ru
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      # Собираем наш мультистейдж Dockerfile и пушим его с тегом latest
-      - name: Build and push DevOps Image
+      - name: Build and Push Custom Runner
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ./Dockerfile.runner
           push: true
-          tags: registry.gitverse.ru/${{ github.repository }}/devops-ci:latest
+          tags: hub.gitverse.ru/${{ github.repository_owner }}/custom-runner:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-  # ШАГ 2: Запуск тестов безопасности и валидации ВНУТРИ нашего нового образа
-  validate:
-    needs: build-ci-image # Ждем, пока соберется и запушится образ из первого шага
-    runs-on: ubuntu-latest
-    # Заставляем весь джоб крутиться внутри нашего собственного собранного контейнера
-    container:
-      image: registry.gitverse.ru/${{ github.repository }}/devops-ci:latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Send Success Notification
+        if: success()
+        uses: appleboy/telegram-action@master
         with:
-          fetch-depth: 0
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: |
+            🔔 *Runner Build: SUCCESS*
+            
+            Проект: `k3s-infra-test`
+            Образ: `hub.gitverse.ru/${{ github.repository_owner }}/custom-runner:latest`
+            Статус: Новый образ раннера успешно собран и запушен в GitVerse Registry!
+            
+            Логи сборки: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-      # Все сканеры уже лежат внутри образа, запускаем их напрямую без wget/curl за 0 секунд!
-      - name: Run Gitleaks (Secret Scanner)
-        run: gitleaks detect --verbose --redact
+      - name: Send Failure Notification
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: |
+            🚨 *Runner Build: FAILED*
+            
+            Проект: `k3s-infra-test`
+            Статус: Крах при сборке кастомного Docker-раннера.
+            
+            Срочно проверь логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-      - name: Run Trivy vulnerability scanner (IaC)
-        run: trivy config --exit-code 1 --severity CRITICAL,HIGH .
-
-      - name: Run YAMLLint
-        run: yamllint .
-
-      - name: Validate apps manifests via Kubeconform
-        run: kubeconform -summary -strict apps/
 
 
 

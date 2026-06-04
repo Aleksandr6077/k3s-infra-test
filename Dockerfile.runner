@@ -1,0 +1,50 @@
+# ==============================================================================
+# STAGE 1: Извлекаем бинарник Gitleaks из официального образа
+# ==============================================================================
+FROM zricethezav/gitleaks:v8.18.2 AS gitleaks-source
+
+# ==============================================================================
+# STAGE 2: Извлекаем бинарник Trivy из официального образа
+# ==============================================================================
+FROM aquasecurity/trivy:0.50.1 AS trivy-source
+
+# ==============================================================================
+# STAGE 3: Извлекаем бинарники Kubectl и Helm
+# ==============================================================================
+FROM alpine:3.19 AS k8s-tools
+RUN apk add --no-cache curl
+RUN curl -LO "https://k8s.io" && \
+    chmod +x kubectl
+RUN curl -fsSL -o helm.tar.gz https://helm.sh && \
+    tar -zxvf helm.tar.gz && \
+    mv linux-amd64/helm /usr/local/bin/helm && \
+    chmod +x /usr/local/bin/helm
+
+# ==============================================================================
+# STAGE 4: Финальный продакшн-образ раннера
+# ==============================================================================
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    git-lfs \
+    jq \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=gitleaks-source /usr/bin/gitleaks /usr/local/bin/gitleaks
+COPY --from=trivy-source /usr/local/bin/trivy /usr/local/bin/trivy
+COPY --from=k8s-tools /kubectl /usr/local/bin/kubectl
+COPY --from=k8s-tools /usr/local/bin/helm /usr/local/bin/helm
+
+RUN gitleaks version && \
+    trivy --version && \
+    kubectl version --client && \
+    helm version
+
+WORKDIR /workspace
+
+CMD ["/bin/bash"]
