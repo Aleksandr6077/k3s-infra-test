@@ -31,7 +31,8 @@ jobs:
           context: .
           file: ./Dockerfile.runner
           push: true
-          tags: hub.gitverse.ru/${{ github.repository_owner }}/custom-runner:latest
+          # Жестко прописываем в нижнем регистре
+          tags: hub.gitverse.ru/aleksandr607/custom-runner:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -45,7 +46,7 @@ jobs:
             🔔 *Runner Build: SUCCESS*
             
             Проект: `k3s-infra-test`
-            Образ: `hub.gitverse.ru/${{ github.repository_owner }}/custom-runner:latest`
+            Образд: `hub.gitverse.ru/aleksandr607/custom-runner:latest`
             Статус: Новый образ раннера успешно собран и запушен в GitVerse Registry!
             
             Логи сборки: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -63,6 +64,7 @@ jobs:
             Статус: Крах при сборке кастомного Docker-раннера.
             
             Срочно проверь логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
 
 
 

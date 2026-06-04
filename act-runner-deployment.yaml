@@ -34,18 +34,19 @@ spec:
       labels:
         app: act-runner
     spec:
-      serviceAccountName: default # Автоматически дает права на скачивание образов
+      serviceAccountName: default
       containers:
         - name: runner
-          image: gitverse.ru/gitverse/act-runner:latest # Официальный образ со скриншота
+          image: gitverse.ru/gitverse/act-runner:latest
           imagePullPolicy: Always
           env:
             - name: INSTANCE_URL
-              value: "https://gitverse.ru/sc/" # URL инстанса со скриншота
+              value: "https://gitverse.ru/sc/"
             - name: RUNNER_NAME
               value: "looppc-k3s-runner"
             - name: RUNNER_LABELS
-              value: "ubuntu-latest:docker://hub.gitverse.ru/Aleksandr607/custom-runner:latest"
+              # Имя пользователя переведено в нижний регистр: aleksandr607
+              value: "ubuntu-latest:docker://hub.gitverse.ru/aleksandr607/custom-runner:latest"
             - name: RUNNER_REGISTRATION_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -64,3 +65,4 @@ spec:
         - name: docker-socket
           hostPath:
             path: /var/run/docker.sock
+
