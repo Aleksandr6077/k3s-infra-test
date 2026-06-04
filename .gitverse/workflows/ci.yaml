@@ -12,50 +12,79 @@ on:
 jobs:
   devsecops_pipeline:
     runs-on: ubuntu-latest
+    # НАТИВНЫЙ МЕТОД: Запускаем весь пайплайн внутри готового образа GitLeaks
+    # Используем зеркало mirror.gcr.io, чтобы обойти блокировку Docker Hub в GitVerse
+    container:
+      image: mirror.gcr.io/zricethezav/gitleaks:latest
 
     steps:
+      #  В контейнере gitleaks минималистичный Linux (alpine), 
+      # нам нужно явно поставить git, чтобы checkout работал корректно
+      - name: Установка зависимостей окружения
+        run: |
+          apk add --no-cache git bash curl
+
       - name: Клонируем репозиторий
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 0. Линтинг YAML (Проверка синтаксиса и отступов)
-      - name: Запуск Yamllint
-        uses: ibiqlik/action-yamllint@v3
-        with:
-          file_or_dir: .
-          config_data: |
-            extends: default
-            rules:
-              line-length: disable
-              document-start: disable
+      # 0. Линтинг YAML через Python
+      # Так как мы в контейнере GitLeaks (Alpine), тут по умолчанию нет python3.
+      # Ставим его на лету для этого шага.
+      - name: Запуск Валидации YAML (PyYAML)
+        run: |
+          apk add --no-cache python3 py3-pip
+          python3 -c "
+          import os, sys
+          try:
+              import yaml
+          except ImportError:
+              os.system('pip3 install pyyaml --break-system-packages')
+              import yaml
 
+          has_errors = False
+          print('Начало проверки YAML файлов...')
+          for root, dirs, files in os.walk('.'):
+              if any(part.startswith('.') for part in root.split(os.sep)):
+                  continue
+              for file in files:
+                  if file.endswith(('.yaml', '.yml')):
+                      file_path = os.path.join(root, file)
+                      try:
+                          with open(file_path, 'r', encoding='utf-8') as f:
+                              list(yaml.safe_load_all(f))
+                          print(f'✅ {file_path} - ОК')
+                      except Exception as e:
+                          print(f'❌ Ошибка синтаксиса в {file_path}:\n{e}')
+                          has_errors = True
+          if has_errors:
+              sys.exit(1)
+          print('Все YAML файлы успешно прошли проверку.')
+          "
+          
       # 1. GitLeaks — Сканирование секретов
       - name: Запуск GitLeaks (Поиск секретов)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gitleaks detect --source=. --verbose --redact
 
       # 2. Trivy — ЗАГЛУШКА
       - name: Запуск Trivy Config Scan
         run: |
-          echo "→ Trivy: ЗАГЛУШКА (тестирование уведомлений)"
+          echo "→ Trivy: ЗАГЛУШКА"
           echo "✅ Trivy config scan passed (stub)"
-        continue-on-error: false
 
       # 3. Kube-score — ЗАГЛУШКА
       - name: Запуск Kube-score (Линтер манифестов)
         run: |
-          echo "→ Kube-score: ЗАГЛУШКА (тестирование уведомлений)"
+          echo "→ Kube-score: ЗАГЛУШКА"
           echo "✅ Kube-score passed (stub)"
-        continue-on-error: false
 
       # 3.5. Kubernetes Dry-Run — ЗАГЛУШКА
       - name: Запуск Kubernetes Dry-Run (Валидация на кластере)
         run: |
-          echo "→ K8s Dry-Run: ЗАГЛУШКА (проверка манифестов через kubectl)"
+          echo "→ K8s Dry-Run: ЗАГЛУШКА"
           echo "✅ Kubernetes dry-run passed (stub)"
-        continue-on-error: false
 
       # 4. Уведомление в Telegram при УСПЕШНОМ прохождении
       - name: Уведомление в Telegram (Успех)
@@ -64,10 +93,11 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s" || echo "Не удалось определить коммит")
           curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id=${TELEGRAM_CHAT_ID} \
-            -d parse_mode=HTML \
-            -d text="✅ <b>Пайплайн k3s-infra-test</b> успешно пройден!%0AКоммит: ${{ github.event.head_commit.message }}"
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="✅ <b>Пайплайн k3s-infra-test</b> успешно пройден!<br><b>Коммит:</b> ${COMMIT_MSG}"
 
       # 5. Уведомление в Telegram при ПАДЕНИИ
       - name: Уведомление в Telegram (Ошибка)
@@ -77,9 +107,13 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id=${TELEGRAM_CHAT_ID} \
-            -d parse_mode=HTML \
-            -d text="❌ <b>Пайплайн k3s-infra-test</b> завален!%0AПроверьте логи сборки безопасности in GitVerse.%0AАвтор коммита: ${{ github.actor }}"
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="❌ <b>Пайплайн k3s-infra-test</b> завален!<br>Проверьте логи сборки безопасности в GitVerse.<br><b>Автор коммита:</b> ${{ github.actor }}"
+
+
+
+
 
 
 
