@@ -12,29 +12,17 @@ on:
 jobs:
   devsecops_pipeline:
     runs-on: ubuntu-latest
-    # НАТИВНЫЙ МЕТОД: Запускаем весь пайплайн внутри готового образа GitLeaks
-    # Используем зеркало mirror.gcr.io, чтобы обойти блокировку Docker Hub в GitVerse
-    container:
-      image: mirror.gcr.io/zricethezav/gitleaks:latest
 
     steps:
-      #  В контейнере gitleaks минималистичный Linux (alpine), 
-      # нам нужно явно поставить git, чтобы checkout работал корректно
-      - name: Установка зависимостей окружения
-        run: |
-          apk add --no-cache git bash curl
-
-      - name: Клонируем репозиторий
+      - name: Клонируем репозиторий проекта
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # 0. Линтинг YAML через Python
-      # Так как мы в контейнере GitLeaks (Alpine), тут по умолчанию нет python3.
-      # Ставим его на лету для этого шага.
+       Alb-step для PyYAML...
       - name: Запуск Валидации YAML (PyYAML)
         run: |
-          apk add --no-cache python3 py3-pip
           python3 -c "
           import os, sys
           try:
@@ -63,10 +51,25 @@ jobs:
           print('Все YAML файлы успешно прошли проверку.')
           "
           
-      # 1. GitLeaks — Сканирование секретов
-      - name: Запуск GitLeaks (Поиск секретов)
+      # 1. GitLeaks — ИСПРАВЛЕНО: Ставим Go, клонируем и собираем из исходников на лету
+      # Используем официальный экшен для установки Go окружения
+      - name: Установка Go (Golang)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # Актуальная и стабильная версия для сборки gitleaks
+
+      - name: Сборка и запуск GitLeaks из исходников
         run: |
-          gitleaks detect --source=. --verbose --redact
+          echo "→ Клонируем исходный код GitLeaks..."
+          git clone --depth 1 https://github.com/gitleaks/gitleaks.git /tmp/gitleaks-src
+          
+          echo "→ Компилируем бинарник..."
+          cd /tmp/gitleaks-src
+          go build -o /tmp/gitleaks main.go
+          
+          echo "→ Возвращаемся в рабочую директорию и запускаем сканирование секретов..."
+          cd ${{ github.workspace }}
+          /tmp/gitleaks detect --source=. --verbose --redact
 
       # 2. Trivy — ЗАГЛУШКА
       - name: Запуск Trivy Config Scan
@@ -97,7 +100,7 @@ jobs:
           curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d parse_mode="HTML" \
-            -d text="✅ <b>Пайплайн k3s-infra-test</b> успешно пройден!<br><b>Коммит:</b> ${COMMIT_MSG}"
+            -d text="✅ <b>Пайплайн k3s-infra-test</b> успешно пройден!%0A<b>Коммит:</b> ${COMMIT_MSG}"
 
       # 5. Уведомление в Telegram при ПАДЕНИИ
       - name: Уведомление в Telegram (Ошибка)
@@ -109,7 +112,8 @@ jobs:
           curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d parse_mode="HTML" \
-            -d text="❌ <b>Пайплайн k3s-infra-test</b> завален!<br>Проверьте логи сборки безопасности в GitVerse.<br><b>Автор коммита:</b> ${{ github.actor }}"
+            -d text="❌ <b>Пайплайн k3s-infra-test</b> завален!%0AПроверьте логи сборки безопасности в GitVerse.%0A<b>Автор коммита:</b> ${{ github.actor }}"
+
 
 
 

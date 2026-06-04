@@ -1,0 +1,50 @@
+- name: Подготовка окружения для k3s
+  hosts: k3s_nodes
+  gather_facts: false
+
+  tasks:
+    - name: Скачиваем и запускаем инсталлятор k3s
+      shell: curl -sfL https://get.k3s.io | sh -
+      become: true
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Создаем директорию .kube в домашней папке
+      file:
+        path: "{{ lookup('env', 'HOME') }}/.kube"
+        state: directory
+        mode: '0700'
+
+    - name: Копируем конфигурационный файл k3s config под sudo
+      copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ lookup('env', 'HOME') }}/.kube/config"
+        remote_src: true
+        owner: "{{ lookup('env', 'USER') }}"
+        group: "{{ lookup('env', 'USER') }}"
+        mode: '0600'
+      become: true
+
+    - name: Настраиваем постоянный алиас k='k3s kubectl'
+      lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.bashrc"
+        line: "alias k='k3s kubectl'"
+        state: present
+
+    - name: Скачиваем дебиан-пакет K9s
+      get_url:
+        url: https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.deb
+        dest: /tmp/k9s_linux_amd64.deb
+        mode: '0644'
+
+    - name: Устанавливаем K9s через пакетный менеджер apt
+      apt:
+        deb: /tmp/k9s_linux_amd64.deb
+      become: true
+
+    - name: Удаляем временный дебиан-пакет
+      file:
+        path: /tmp/k9s_linux_amd64.deb
+        state: absent
+
+

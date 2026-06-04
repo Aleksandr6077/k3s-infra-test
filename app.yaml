@@ -26,6 +26,14 @@ spec:
       labels:
         app: my-nginx
     spec:
+      # Этот контейнер запустится 1, создаст index.html на диске и завершится
+      initContainers:
+      - name: init-html
+        image: alpine
+        command: ['sh', '-c', 'echo "<h1>Hello from k3s inside WSL2! DevOps is working!</h1>" > /data/index.html']
+        volumeMounts:
+        - name: nginx-storage
+          mountPath: /data
       containers:
       - name: nginx
         image: nginx:alpine
@@ -38,10 +46,9 @@ spec:
           limits:
             memory: "64Mi"
             cpu: "100m"
-        # Монтируем диск внутрь контейнера
         volumeMounts:
         - name: nginx-storage
-          mountPath: /usr/share/nginx/html
+          mountPath: /usr/share/nginx/html # Монтируем тот же диск сюда
       volumes:
       - name: nginx-storage
         persistentVolumeClaim:
@@ -64,6 +71,7 @@ kind: Ingress
 metadata:
   name: nginx-ingress
 spec:
+  ingressClassName: traefik
   rules:
   - host: my-app.local
     http:
@@ -75,3 +83,4 @@ spec:
             name: my-nginx
             port:
               number: 80
+
