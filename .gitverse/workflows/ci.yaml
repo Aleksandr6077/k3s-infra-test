@@ -6,12 +6,12 @@ on:
       - master
     paths:
       - 'Dockerfile.runner'
-      - '.gitverse/workflows/ci.yaml' # Исправлено
+      - '.gitverse/workflows/ci.yaml'
 
 jobs:
   build-and-push:
-    # Исправлено
-    runs-on: ubuntu-latest
+    # Изменено: Теперь пайплайн жестко требует локальный раннер
+    runs-on: looppc-runner
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,6 +64,7 @@ jobs:
             Статус: Крах при сборке кастомного Docker-раннера.
             
             Срочно проверь логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
 
 
 

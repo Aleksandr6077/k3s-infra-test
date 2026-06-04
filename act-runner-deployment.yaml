@@ -47,7 +47,7 @@ spec:
             - name: RUNNER_NAME
               value: "looppc-k3s-runner"
             - name: RUNNER_LABELS
-              value: "ubuntu-latest"
+              value: "looppc-runner"
             - name: RUNNER_REGISTRATION_TOKEN
               valueFrom:
                 secretKeyRef:
