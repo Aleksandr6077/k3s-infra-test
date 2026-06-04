@@ -6,11 +6,12 @@ on:
       - master
     paths:
       - 'Dockerfile.runner'
-      - '.gitverse/workflows/build-runner-and-notify.yaml'
+      - '.gitverse/workflows/ci.yaml'
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    # Изменено: теперь задача гарантированно пойдет локальный раннер
+    runs-on: self-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +32,6 @@ jobs:
           context: .
           file: ./Dockerfile.runner
           push: true
-          # Жестко прописываем в нижнем регистре
           tags: hub.gitverse.ru/aleksandr607/custom-runner:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -46,7 +46,7 @@ jobs:
             🔔 *Runner Build: SUCCESS*
             
             Проект: `k3s-infra-test`
-            Образд: `hub.gitverse.ru/aleksandr607/custom-runner:latest`
+            Образ: `hub.gitverse.ru/aleksandr607/custom-runner:latest`
             Статус: Новый образ раннера успешно собран и запушен в GitVerse Registry!
             
             Логи сборки: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -64,6 +64,7 @@ jobs:
             Статус: Крах при сборке кастомного Docker-раннера.
             
             Срочно проверь логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
 
 
 
