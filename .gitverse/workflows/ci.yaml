@@ -6,12 +6,12 @@ on:
       - master
     paths:
       - 'Dockerfile.runner'
-      - '.gitverse/workflows/ci.yaml'
+      - '.gitverse/workflows/ci.yaml' # Исправлено
 
 jobs:
   build-and-push:
-    # Изменено: теперь задача гарантированно пойдет локальный раннер
-    runs-on: self-hosted
+    # Исправлено: массив меток
+    runs-on: [self-hosted, ubuntu-latest]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,6 +64,7 @@ jobs:
             Статус: Крах при сборке кастомного Docker-раннера.
             
             Срочно проверь логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
 
 
 
