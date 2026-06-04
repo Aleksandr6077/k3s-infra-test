@@ -1,6 +1,5 @@
 name: Ci
 
-# Триггеры запуска (адаптировано под ветку master)
 on:
   push:
     branches:
@@ -12,37 +11,34 @@ on:
 
 jobs:
   devsecops_pipeline:
-    # Запуск на стандартном облачном раннере
     runs-on: ubuntu-latest
 
     steps:
-      # Шаг 1: Клонируем репозиторий в воркспейс раннера
+      # Этот экшен базовый
       - name: Клонируем репозиторий
         uses: actions/checkout@v4
 
-      # Шаг 2: Проверка истории коммитов на зашитые пароли и токены
+      # 1. Запуск GitLeaks через официальный Docker-образ
       - name: Запуск GitLeaks (Поиск секретов)
-        uses: zricethezav/gitleaks-action@v2
-        # Не игнорируем ошибки: если секрет найден — пайплайн упадет
+        run: |
+          docker run --rm -v $(pwd):/path zricethezav/gitleaks:latest detect --verbose --source /path
         continue-on-error: false
 
-      # Шаг 3: Проверка манифестов Kubernetes/K3s на уязвимости безопасности
+      # 2. Запуск Trivy через официальный Docker-образ
       - name: Запуск Trivy Config Scan
-        uses: aquasec/trivy-action@master
-        with:
-          scan-type: 'config'
-          severity: 'HIGH,CRITICAL'
-          exit-code: '1' # Уронит пайплайн при критических проблемах
+        run: |
+          docker run --rm -v $(pwd):/apps -w /apps aquasec/trivy:latest config --severity HIGH,CRITICAL --exit-code 1 .
+        continue-on-error: false
 
-      # Шаг 4: Валидация k8s манифестов на соответствие Best Practices через Docker
+      # 3. Валидация k8s манифестов через Kube-score
       - name: Запуск Kube-score (Линтер манифестов)
         run: |
           docker run --rm -v $(pwd):/project -w /project zegl/kube-score:latest score *.yaml
         continue-on-error: false
 
-      # Шаг 5: Отправка уведомления в Telegram при УСПЕШНОМ прохождении всех шагов
+      # 4. Уведомление в Telegram при УСПЕШНОМ прохождении
       - name: Уведомление в Telegram (Успех)
-        if: success() # Сработает только если шаги 2, 3 и 4 завершились без ошибок
+        if: success()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -51,9 +47,9 @@ jobs:
           -d "chat_id=${TELEGRAM_CHAT_ID}" \
           -d "text=✅ Пайплайн проекта k3s-infra-test успешно пройден!%0AКоммит: ${{ github.event.head_commit.message }}"
 
-      # Шаг 6: Отправка уведомления в Telegram при ПАДЕНИИ любого из шагов безопасности
+      # 5. Уведомление в Telegram при ПАДЕНИИ
       - name: Уведомление в Telegram (Ошибка)
-        if: failure() # Сработает, если GitLeaks, Trivy или Kube-score нашли уязвимость
+        if: failure()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -61,6 +57,7 @@ jobs:
           curl -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
           -d "chat_id=${TELEGRAM_CHAT_ID}" \
           -d "text=❌ Пайплайн проекта k3s-infra-test завален!%0AПроверьте логи сборки безопасности в GitVerse.%0AАвтор коммита: ${{ github.actor }}"
+
 
 
 
