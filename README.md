@@ -41,7 +41,7 @@ sudo chown $(id -u):$(id -g) ~/.kube/config
 В проекте настроена автоматическая проверка кода перед коммитом с помощью pre-commit хуков.
 Подключенные хуки:
 * docker-compose-check — автоматическая валидация структуры и синтаксиса файлов Docker Compose.
-* Check for Hardcoded Secrets — Trivy (.trivyignore сознательно использую)
+* Check for Hardcoded Secrets — Trivy
 
 ## ⚙️ Автоматизация и CI/CD (Gitea Actions)
 В проекте настроен автоматический пайплайн валидации изменений (`.gitea/workflows/ci.yaml`), который триггерится на каждый push в ветку master.
