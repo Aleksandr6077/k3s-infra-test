@@ -36,4 +36,5 @@ node-exporter-xjkfn                                     1/1     Running   0     
 prometheus-kube-prom-kube-prometheus-prometheus-0       2/2     Running   6          19m
 promtail-p9wx9                                          1/1     Running   3          71m
 ```
-### 2.
+### 2. Changelog:
+**Пробы добавлены**
