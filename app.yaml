@@ -26,7 +26,6 @@ spec:
       labels:
         app: my-nginx
     spec:
-      # Этот контейнер запустится 1, создаст index.html на диске и завершится
       initContainers:
       - name: init-html
         image: alpine
@@ -48,7 +47,27 @@ spec:
             cpu: "100m"
         volumeMounts:
         - name: nginx-storage
-          mountPath: /usr/share/nginx/html # Монтируем тот же диск сюда
+          mountPath: /usr/share/nginx/html
+        # ДОБАВИЛИ ПРОБЫ
+        readinessProbe:
+          httpGet:
+            path: /index.html
+            port: 80
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /index.html
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
+        # -------------------------------
       volumes:
       - name: nginx-storage
         persistentVolumeClaim:
@@ -83,4 +102,5 @@ spec:
             name: my-nginx
             port:
               number: 80
+
 
