@@ -1,11 +1,11 @@
 - name: Развертывание k3s локально и настройка окружения
   hosts: k3s_nodes
-  gather_facts: true # включаем для сбора системных переменных
+  gather_facts: true # для сбора системных переменных
 
   tasks:
     - name: Вывод имени текущего пользователя (для теста)
       debug:
-        msg: "Привет, я запустился от имени пользователя {{ ansible_env.USER }}"
+        msg: "Привет, я запустился от имени пользователя {{ ansible_user_id }}, его dir: {{ ansible_user_dir }}"
 
     - name: Скачиваем и запускаем инсталлятор k3s
       shell: curl -sfL https://get.k3s.io | sh -
@@ -15,25 +15,25 @@
 
     - name: Создаем директорию .kube в домашней папке текущего юзера
       file:
-        path: "/home/{{ ansible_env.USER }}/.kube"
+        path: "{{ ansible_user_dir }}/.kube"
         state: directory
         mode: '0700'
-        owner: "{{ ansible_env.USER }}"
-        group: "{{ ansible_env.USER }}"
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_id }}"
 
     - name: Копируем конфигурационный файл k3s config под sudo
       copy:
         src: /etc/rancher/k3s/k3s.yaml
-        dest: "/home/{{ ansible_env.USER }}/.kube/config"
+        dest: "{{ ansible_user_dir }}/.kube/config"
         remote_src: true
-        owner: "{{ ansible_env.USER }}" 
-        group: "{{ ansible_env.USER }}"
+        owner: "{{ ansible_user_id }}" 
+        group: "{{ ansible_user_id }}"
         mode: '0600'
       become: true
 
     - name: Настраиваем permanent алиас k='k3s kubectl'
       lineinfile:
-        path: "/home/{{ ansible_env.USER }}/.bashrc"
+        path: "{{ ansible_user_dir }}/.bashrc"
         line: "alias k='k3s kubectl'"
         state: present
 
@@ -52,6 +52,7 @@
       file:
         path: /tmp/k9s_linux_amd64.deb
         state: absent
+
 
 
 
