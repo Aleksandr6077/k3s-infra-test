@@ -59,7 +59,7 @@ make recreate
 
 ```bash
 cd ansible
-ansible-playbook -i hosts.ini setup-env.yml -k
+ansible-playbook -i hosts.ini setup-env.yml -K
 ```
 
 ---

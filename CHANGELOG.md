@@ -39,8 +39,8 @@ promtail-p9wx9                                          1/1     Running   3     
 ## ✅ 2. Changelog: Этап 2
 
 ### Fixed
-- *🩺 Добавлены пробы Liveness Readiness в манифест app.yaml
-- *🚀 Ansible/Variables: Заменена нестабильная переменная окружения `ansible_env.USER` на системные факты `ansible_user_id` и `ansible_user_dir`. Это исправило ошибку падения плейбука при создании директории `.kube` и копировании конфигурационных файлов, когда таски выполняются с привилегиями `become: true`.
+- 🩺 Добавлены пробы Liveness Readiness в манифест app.yaml
+- 🚀 Ansible/Variables: Заменена нестабильная переменная окружения `ansible_env.USER` на системные факты `ansible_user_id` и `ansible_user_dir`. Это исправило ошибку падения плейбука при создании директории `.kube` и копировании конфигурационных файлов, когда таски выполняются с привилегиями `become: true`.
 - *Makefile/Sudo: Изменен флаг запуска плейбука с `-k` (пароль SSH) на заглавный `-K` (`--ask-become-pass`). Это устранило ошибку `sudo: a password is required` при локальном развертывании кластера на `localhost`.
 
 ### Changed
