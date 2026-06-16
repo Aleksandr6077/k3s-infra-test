@@ -1,0 +1,87 @@
+services:
+  # Единая точка входа для управления кластером
+  k3s-balancer:
+    image: haproxy:2.8-alpine
+    container_name: k3s-balancer
+    restart: always
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "6443:6443" # Проброс порта на WSL2
+    networks:
+      k3s-net:
+        ipv4_address: 172.20.0.10
+
+  # Инициализатор кластера (Лидер Raft)
+  k3s-master-1:
+    image: rancher/k3s:v1.31.1-k3s1
+    container_name: k3s-master-1
+    privileged: true
+    restart: always
+    environment:
+      - K3S_TOKEN=SECRET_CLUSTER_TOKEN # Единый токен для связи нод
+    command: >
+      server 
+      --cluster-init
+      --tls-san=172.20.0.10
+      --tls-san=localhost
+    volumes:
+      - k3s-master-1-data:/var/lib/rancher/k3s
+    networks:
+      k3s-net:
+        ipv4_address: 172.20.0.11
+
+  # Второй мастер (Участник кворума)
+  k3s-master-2:
+    image: rancher/k3s:v1.31.1-k3s1
+    container_name: k3s-master-2
+    privileged: true
+    restart: always
+    depends_on:
+      - k3s-master-1
+    environment:
+      - K3S_TOKEN=SECRET_CLUSTER_TOKEN
+    command: >
+      server 
+      --server https://172.20.0.11:6443
+      --tls-san=172.20.0.10
+      --tls-san=localhost
+    volumes:
+      - k3s-master-2-data:/var/lib/rancher/k3s
+    networks:
+      k3s-net:
+        ipv4_address: 172.20.0.12
+
+  # Третий мастер (Для нечетного кворума)
+  k3s-master-3:
+    image: rancher/k3s:v1.31.1-k3s1
+    container_name: k3s-master-3
+    privileged: true
+    restart: always
+    depends_on:
+      - k3s-master-1
+    environment:
+      - K3S_TOKEN=SECRET_CLUSTER_TOKEN
+    command: >
+      server 
+      --server https://172.20.0.11:6443
+      --tls-san=172.20.0.10
+      --tls-san=localhost
+    volumes:
+      - k3s-master-3-data:/var/lib/rancher/k3s
+    networks:
+      k3s-net:
+        ipv4_address: 172.20.0.13
+
+volumes:
+  k3s-master-1-data:
+  k3s-master-2-data:
+  k3s-master-3-data:
+
+networks:
+  k3s-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+

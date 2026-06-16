@@ -1,0 +1,37 @@
+---
+- name: Создаем директорию .kube в домашней папке
+  file:
+    path: "{{ ansible_user_dir }}/.kube"
+    state: directory
+    mode: '0700'
+
+- name: Настраиваем постоянный алиас k='kubectl'
+  lineinfile:
+    path: "{{ ansible_user_dir }}/.bashrc"
+    line: "alias k='kubectl'"
+    state: present
+
+- name: Проверяем, установлен ли K9s в системе
+  command: which k9s
+  register: k9s_check
+  failed_when: false
+  changed_when: false
+
+- name: Скачиваем дебиан-пакет K9s
+  get_url:
+    url: https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.deb
+    dest: /tmp/k9s_linux_amd64.deb
+    mode: '0644'
+  when: k9s_check.rc != 0
+
+- name: Устанавливаем K9s через пакетный менеджер apt
+  apt:
+    deb: /tmp/k9s_linux_amd64.deb
+  become: true
+  when: k9s_check.rc != 0
+
+- name: Удаляем временный дебиан-пакет K9s
+  file:
+    path: /tmp/k9s_linux_amd64.deb
+    state: absent
+  when: k9s_check.rc != 0

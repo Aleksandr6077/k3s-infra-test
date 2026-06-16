@@ -1,0 +1,7 @@
+---
+# Пути к манифестам на локальной машине (WSL2)
+project_dir: "{{ ansible_user_dir }}/pet2"
+loki_values_path: "{{ project_dir }}/loki-values.yaml"
+mon_values_path: "{{ project_dir }}/mon-values.yaml"
+node_exporter_manifest: "{{ project_dir }}/node-exporter-k3s.yaml"
+app_manifest: "{{ project_dir }}/app.yaml"

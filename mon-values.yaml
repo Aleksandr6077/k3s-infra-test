@@ -1,7 +1,7 @@
 prometheus:
   prometheusSpec:
     retention: 1d
-    # ИСПРАВЛЕНИЕ: Добавляем прямой независимый сбор метрик в обход ServiceMonitor
+    # Прямой независимый сбор метрик в обход ServiceMonitor
     additionalScrapeConfigs:
       - job_name: 'node-exporter-k3s'
         static_configs:
@@ -41,6 +41,7 @@ grafana:
       - grafana.local
     path: /
 
+# Полностью выключаем встроенный проблемный экспортер чарта раз он не умеет в hostRootfs: false в WSL2
 nodeExporter:
   enabled: false
 
@@ -49,6 +50,8 @@ prometheus-node-exporter:
 
 kubeStateMetrics:
   enabled: true
+
+
 
 
 

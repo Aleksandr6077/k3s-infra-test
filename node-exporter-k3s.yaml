@@ -18,10 +18,13 @@ spec:
       hostPID: true
       containers:
       - name: node-exporter
-        image: quay.io/prometheus/node-exporter:v1.11.1
+        image: quay.io/prometheus/node-exporter:v1.8.2  # Более стабильная версия для WSL/Docker Desktop
         args:
         - --path.procfs=/host/proc
         - --path.sysfs=/host/sys
+        # Отключаем дефолтные сборщики, которые лезут в недоступные в WSL2 диски и файлы
+        - --no-collector.btrfs
+        - --no-collector.hwmon
         ports:
         - containerPort: 9100
           hostPort: 9100
@@ -36,13 +39,10 @@ spec:
         volumeMounts:
         - name: proc
           mountPath: /host/proc
-          mountPropagation: HostToContainer
-          readOnly: true
+          readOnly: true  
         - name: sys
           mountPath: /host/sys
-          mountPropagation: HostToContainer
-          readOnly: true
-      volumes:
+          readOnly: true 
       - name: proc
         hostPath:
           path: /proc
@@ -56,7 +56,6 @@ metadata:
   name: node-exporter
   namespace: monitoring
   annotations:
-    # ИСПРАВЛЕНИЕ: Прямые аннотации для Прометея вместо ServiceMonitor
     prometheus.io/scrape: "true"
     prometheus.io/port: "9100"
     prometheus.io/path: "/metrics"
@@ -69,3 +68,4 @@ spec:
     targetPort: 9100
   selector:
     app.kubernetes.io/name: prometheus-node-exporter
+

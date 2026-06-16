@@ -1,0 +1,85 @@
+- name: Создаем пространство имен monitoring для стека мониторинга
+  kubernetes.core.k8s:
+    name: monitoring
+    kind: Namespace
+    state: present
+  register: ns_creation
+  until: ns_creation is success
+  retries: 10
+  delay: 5
+
+- name: Создаем Kubernetes секрет с паролем от Grafana из Ansible Vault
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: grafana-admin-credentials
+        namespace: monitoring
+      type: Opaque
+      stringData:
+        admin-user: "{{ vault_grafana_admin_user }}"
+        admin-password: "{{ vault_grafana_admin_password }}"
+  register: secret_creation
+  # Наш блок защиты: если API-сервер на секунду задумается, Ansible подождет
+  until: secret_creation is success
+  retries: 10
+  delay: 5
+
+- name: Добавляем Helm-репозитории для Grafana и Prometheus COMMUNITY
+  kubernetes.core.helm_repository:
+    name: "{{ item.name }}"
+    repo_url: "{{ item.url }}"
+  loop:
+    - { name: 'grafana', url: 'https://grafana.github.io/helm-charts' }
+    - { name: 'prometheus-community', url: 'https://prometheus-community.github.io/helm-charts' }
+
+- name: Обновляем локальный кэш Helm-репозиториев
+  command: helm repo update
+  changed_when: false
+
+- name: Устанавливаем Grafana Loki (Сбор логов)
+  kubernetes.core.helm:
+    name: loki
+    chart_ref: grafana/loki
+    release_namespace: monitoring
+    timeout: 3m
+    values_files:
+      - "{{ loki_values_path }}"
+    state: present
+    atomic: true
+  register: helm_loki_res
+  until: helm_loki_res is success
+  retries: 5
+  delay: 10
+
+- name: Устанавливаем Prometheus Operator + Grafana (Сбор метрик)
+  kubernetes.core.helm:
+    name: kube-prom
+    chart_ref: prometheus-community/kube-prometheus-stack
+    release_namespace: monitoring
+    timeout: 3m
+    values_files:
+      - "{{ mon_values_path }}"
+    state: present
+    atomic: true
+  register: helm_prom_res
+  until: helm_prom_res is success
+  retries: 5
+  delay: 10
+
+- name: Применяем кастомный манифест Node Exporter (DaemonSet + Service)
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ node_exporter_manifest }}"
+
+- name: Разворачиваем целевое веб-приложение Nginx (PVC + Deployment + Service + Ingress)
+  kubernetes.core.k8s:
+    state: present
+    namespace: default
+    src: "{{ app_manifest }}"
+
+
+
+
