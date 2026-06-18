@@ -8,7 +8,7 @@ INFRA_DIR   = local-infra
 ANSIBLE_DIR = ansible
 
 # Балансировщик для проверки доступности API Kubernetes
-K8S_API_URL = https://127.0.0:6443
+K8S_API_URL = https://127.0.0.1:6443/readyz
 
 # Цвета для красивого вывода логов в терминал
 CYAN   = \033[0;36m
@@ -30,7 +30,7 @@ up:
 	cd $(INFRA_DIR) && docker compose up -d
 	
 	@echo "$(YELLOW)====> Ожидание инициализации кластера и готовности API (/readyz)... <====$(NC)"
-	@until [ $$(curl -s -o /dev/null -w "%{http_code}" --insecure $(K8S_API_URL)) -eq 200 ]; do \
+	@until [ $$(curl -s -o /dev/null -w "%{http_code}" --insecure $(K8S_API_URL)) -eq 200 ] || [ $$(curl -s -o /dev/null -w "%{http_code}" --insecure $(K8S_API_URL)) -eq 401 ]; do \
 		printf "."; \
 		sleep 2; \
 	done
@@ -41,6 +41,7 @@ up:
 	
 	@echo "$(GREEN)====> Инфраструктура успешно развернута и настроена! <====$(NC)"
 	@echo "$(GREEN)Используйте команду 'k get nodes' или 'k9s' для проверки.$(NC)"
+
 
 ## down: Безопасное уничтожение стенда с очисткой данных (Контейнеры, тома, удаление только локального контекста)
 down:

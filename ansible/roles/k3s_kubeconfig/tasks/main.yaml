@@ -1,21 +1,24 @@
 ---
-- name: Читаем kubeconfig с мастера K3s
-  ansible.builtin.slurp:
-    src: /etc/rancher/k3s/k3s.yaml
-  register: k3s_kubeconfig_encoded
-  become: true # Важно: читаем под root-правами
+- name: Вытягиваем kubeconfig напрямую через Docker CLI
+  ansible.builtin.command:
+    cmd: "docker cp k3s-master-1:/etc/rancher/k3s/k3s.yaml {{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+  delegate_to: localhost
+  run_once: true
 
-- name: Сохраняем kubeconfig на локальной машине
-  ansible.builtin.copy:
-    content: "{{ k3s_kubeconfig_encoded.content | b64decode }}"
-    dest: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config-k3s" # Не затираем дефолтный config
+- name: Выставляем безопасные права на файл конфигурации
+  ansible.builtin.file:
+    path: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
     mode: '0600'
   delegate_to: localhost
+  run_once: true
 
 - name: Меняем адрес подключения на балансировщик HAProxy
   ansible.builtin.replace:
-    path: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config-k3s"
+    path: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
     regexp: 'https://127.0.0.1:6443'
-    replace: 'https://{{ haproxy_balancer_ip }}:6443'
+    replace: 'https://{{ haproxy_balancer_ip | default("127.0.0.1") }}:6443'
   delegate_to: localhost
+  run_once: true
+
+
 
