@@ -7,6 +7,9 @@
 INFRA_DIR   = local-infra
 ANSIBLE_DIR = ansible
 
+# Балансировщик для проверки доступности API Kubernetes
+K8S_API_URL = https://127.0.0:6443
+
 # Цвета для красивого вывода логов в терминал
 CYAN   = \033[0;36m
 GREEN  = \033[0;32m
@@ -21,13 +24,17 @@ NC     = \033[0m # No Color
 # По умолчанию показываем справку, если просто набрали "make"
 default: help
 
-## up: Поднятие всего стенда одной кнопкой (Инфраструктура + Настройка + Деплой мониторинга и приложений)
+## up: Поднятие всего стенда одной кнопкой (Инфраструктура + Динамическое ожидание API + Ansible)
 up:
 	@echo "$(CYAN)====> 1. Развертывание HA-инфраструктуры в Docker Compose... <====$(NC)"
 	cd $(INFRA_DIR) && docker compose up -d
 	
-	@echo "$(YELLOW)====> Ожидание инициализации кластера и генерации TLS-сертификатов (15 сек)... <====$(NC)"
-	@sleep 15
+	@echo "$(YELLOW)====> Ожидание инициализации кластера и готовности API (/readyz)... <====$(NC)"
+	@until [ $$(curl -s -o /dev/null -w "%{http_code}" --insecure $(K8S_API_URL)) -eq 200 ]; do \
+		printf "."; \
+		sleep 2; \
+	done
+	@echo "\n$(GREEN)====> Kubernetes API доступен и готов к работе! <====$(NC)"
 	
 	@echo "$(CYAN)====> 2. Запуск оркестрации Ansible (Настройка WSL2, импорт Kubeconfig, деплой сервисов)... <====$(NC)"
 	cd $(ANSIBLE_DIR) && ansible-playbook -i hosts.ini site.yaml --ask-vault-pass
@@ -35,13 +42,18 @@ up:
 	@echo "$(GREEN)====> Инфраструктура успешно развернута и настроена! <====$(NC)"
 	@echo "$(GREEN)Используйте команду 'k get nodes' или 'k9s' для проверки.$(NC)"
 
-## down: Полное уничтожение стенда с очисткой данных (Контейнеры, тома, локальный kubeconfig)
+## down: Безопасное уничтожение стенда с очисткой данных (Контейнеры, тома, удаление только локального контекста)
 down:
 	@echo "$(RED)ВНИМАНИЕ! Это действие полностью уничтожит HA-кластер, очистит все PV/PVC и удалит данные.$(NC)"
 	cd $(INFRA_DIR) && docker compose down -v
 	
-	@echo "$(YELLOW)====> Очистка локального контекста kubeconfig... <====$(NC)"
-	@rm -f ~/.kube/config
+	@echo "$(YELLOW)====> Безопасная очистка локального контекста в ~/.kube/config... <====$(NC)"
+	@if [ -f ~/.kube/config ]; then \
+		kubectl config delete-context k3s-local 2>/dev/null || true; \
+		kubectl config delete-cluster k3s-local-cluster 2>/dev/null || true; \
+		kubectl config delete-user k3s-local-user 2>/dev/null || true; \
+		echo "$(GREEN)Контексты успешно вырезаны. Остальные ваши конфигурации куба целы.$(NC)"; \
+	fi
 	
 	@echo "$(GREEN)====> Стенд полностью уничтожен, локальная среда очищена. <====$(NC)"
 
@@ -52,6 +64,7 @@ recreate: down up
 help:
 	@echo "$(CYAN)Доступные команды в Makefile:$(NC)"
 	@sed -n 's/^## //p' $(MAKEFILE_LIST) | column -t -s ':' | sed -e 's/^/  /'
+
 
 
 
