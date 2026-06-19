@@ -64,37 +64,41 @@
 k3s-infra-test/
 ├── .gitverse/
 │   └── workflows/
-│       └── ci.yaml                  # CI/CD пайплайн для автоматизации (GitVerse)
+│       └── ci.yaml                # CI/CD пайплайн для автоматизации (GitVerse)
 ├── ansible/
 │   ├── roles/
 │   │   ├── k3s_kubeconfig/
 │   │   │   └── tasks/
-│   │   │       └── main.yaml        # Копирование и локальный импорт kubeconfig
+│   │   │       └── main.yaml      # Копирование и локальный импорт kubeconfig
 │   │   ├── k8s_deploy/
 │   │   │   ├── tasks/
-│   │   │   │   └── main.yaml        # Деплой манифестов/Helm-чартов в k3s
+│   │   │   │   └── main.yaml      # Деплой манифестов/Helm-чартов в k3s
 │   │   │   └── vars/
-│   │   │       ├── main.yaml        # Публичные переменные для деплоя
-│   │   │       └── secrets.yaml     # Зашифрованные секреты (Ansible Vault)
+│   │   │       ├── main.yaml      # Публичные переменные для деплоя
+│   │   │       └── secrets.yaml   # Зашифрованные секреты (Ansible Vault)
 │   │   └── wsl_env/
 │   │       └── tasks/
-│   │           └── main.yaml        # Подготовка локального окружения внутри WSL
-│   ├── hosts.ini                    # Инвентарь с описанием хостов окружения
-│   └── site.yaml                    # Главный плейбук, запускающий все роли
+│   │           └── main.yaml      # Подготовка локального окружения внутри WSL
+│   ├── hosts.ini                  # Инвентарь с описанием хостов окружения
+│   └── site.yaml                  # Главный плейбук, запускающий все роли
 ├── local-infra/
 │   ├── haproxy/
-│   │   └── haproxy.cfg              # Конфиг балансировщика для ингрессов или API k3s
-│   └── docker-compose.yml           # Запуск локальной обвязки (HAProxy, базы и т.д.)
-├── .pre-commit-config.yaml          # Локальные проверки (docker-compose-check, trivy) перед коммитом
-├── app.yaml                         # манифест приложения для Kubernetes
-├── CHANGELOG.md                     # История изменений проекта
-├── index.html                       # заглушка для проверки(создается init подом)
-├── LICENSE                          # Лицензия проекта
-├── loki-values.yaml                 # Кастомные value-параметры для сбора логов через Grafana Loki
-├── Makefile                         # Алиасы для быстрых команд (make deploy)
-├── mon-values.yaml                  # Настройки для Prometheus/Grafana мониторинга
-├── node-exporter-k3s.yaml           # Манифест DaemonSet для сбора метрик с нод кластера
-└── README.md                        # Документация
+│   │   ├── haproxy.cfg            # Конфиг балансировщика для ингрессов или API k3s
+│   │   ├── Dockerfile             # Безопасная сборка балансировщика с Linux Caps
+│   │   ├── entrypoint.sh          # Скрипт рантайм-подготовки и запуска демонов
+│   │   └── keepalived.conf        # Конфигурация VRRP для плавающего VIP
+│   └── docker-compose.yml         # Запуск локальной обвязки (HA-балансировщики, k3s-мастера)
+├── .pre-commit-config.yaml        # Локальные проверки (docker-compose-check, trivy)
+├── app.yaml                       # манифест приложения для Kubernetes
+├── CHANGELOG.md                   # История изменений проекта
+├── index.html                     # заглушка для проверки (создается init подом)
+├── LICENSE                        # Лицензия проекта
+├── loki-values.yaml               # Кастомные value-параметры для сбора логов через Grafana Loki
+├── Makefile                       # Алиасы для быстрых команд (make up, make down)
+├── mon-values.yaml                # Настройки для Prometheus/Grafana мониторинга
+├── node-exporter-k3s.yaml         # Манифест DaemonSet для сбора метрик с нод кластера
+└── README.md                      # Документация
+
 ```
 
 ## 🛠️ Как это устроено:

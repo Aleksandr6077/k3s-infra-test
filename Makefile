@@ -37,7 +37,7 @@ up:
 	@echo "\n$(GREEN)====> Kubernetes API доступен и готов к работе! <====$(NC)"
 	
 	@echo "$(CYAN)====> 2. Запуск оркестрации Ansible (Настройка WSL2, импорт Kubeconfig, деплой сервисов)... <====$(NC)"
-	cd $(ANSIBLE_DIR) && ansible-playbook -i hosts.ini site.yaml --ask-vault-pass
+	ansible-playbook -i ansible/hosts.ini ansible/site.yaml
 	
 	@echo "$(GREEN)====> Инфраструктура успешно развернута и настроена! <====$(NC)"
 	@echo "$(GREEN)Используйте команду 'k get nodes' или 'k9s' для проверки.$(NC)"
