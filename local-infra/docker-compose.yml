@@ -1,16 +1,44 @@
 services:
-  # Единая точка входа для управления кластером
-  k3s-balancer:
-    image: haproxy:2.8-alpine
-    container_name: k3s-balancer
+  # Первый балансировщик (Приоритет выше -> станет MASTER)
+  haproxy-1:
+    build:
+      context: ./haproxy
+      dockerfile: Dockerfile
+    container_name: haproxy-1
     restart: always
+    # Запрашиваем у ядра Linux только точечные сетевые привилегии
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - KEEPALIVED_PRIORITY=101
     volumes:
       - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     ports:
-      - "6443:6443" # Проброс порта на WSL2
+      - "6443:6443" # Проброс основного порта на хост
     networks:
       k3s-net:
-        ipv4_address: 172.20.0.10
+        ipv4_address: 172.20.0.100
+
+  # Второй балансировщик (Приоритет ниже -> станет BACKUP)
+  haproxy-2:
+    build:
+      context: ./haproxy
+      dockerfile: Dockerfile
+    container_name: haproxy-2
+    restart: always
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - KEEPALIVED_PRIORITY=100
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "6444:6443" # Резервный порт на хосте на случай тестов напрямую
+    networks:
+      k3s-net:
+        ipv4_address: 172.20.0.101
 
   # Инициализатор кластера (Лидер Raft)
   k3s-master-1:
@@ -19,7 +47,7 @@ services:
     privileged: true
     restart: always
     environment:
-      - K3S_TOKEN=SECRET_CLUSTER_TOKEN # Единый токен для связи нод
+      - K3S_TOKEN=SECRET_CLUSTER_TOKEN
     command: >
       server 
       --cluster-init
@@ -84,4 +112,6 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
+
+
 
