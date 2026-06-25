@@ -1,3 +1,9 @@
+- name: Генерация локального keepalived.conf из Ansible Vault
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: "{{ playbook_dir }}/../local-infra/haproxy/keepalived.conf"
+    mode: '0644'
+
 - name: Создаем пространство имен monitoring для стека мониторинга
   kubernetes.core.k8s:
     name: monitoring

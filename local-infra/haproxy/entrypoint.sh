@@ -15,3 +15,11 @@ keepalived -n -l -f /tmp/keepalived.conf -p /run/keepalived/keepalived.pid &
 exec haproxy -f /usr/local/etc/haproxy/haproxy.cfg
 
 
+
+
+
+
+
+
+
+
