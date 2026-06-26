@@ -1,7 +1,7 @@
 ---
 - name: Вытягиваем kubeconfig напрямую через Docker CLI
   ansible.builtin.command:
-    cmd: "docker cp k3s-master-1:/etc/rancher/k3s/k3s.yaml {{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    cmd: "docker cp {{ inventory_hostname }}:/etc/rancher/k3s/k3s.yaml {{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
   delegate_to: localhost
   run_once: true
 

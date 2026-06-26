@@ -6,6 +6,34 @@
 # Пути к каталогам относительно корня проекта
 INFRA_DIR   = local-infra
 ANSIBLE_DIR = ansible
+VAULT_FILE := group_vars/all/vault.yml
+PASS_FILE := .ansible_vault_pass.txt
+
+# Зашифровать файл секретов
+vault-encrypt:
+	ansible-vault encrypt $(VAULT_FILE)
+
+# Расшифровать файл (если нужно посмотреть в открытом виде, не рекомендуется коммитить)
+vault-decrypt:
+	ansible-vault decrypt $(VAULT_FILE)
+
+# Редактировать секреты "на лету" (откроет в vim/nano, автоматически зашифрует обратно при сохранении)
+vault-edit:
+	ansible-vault edit $(VAULT_FILE)
+
+# Проверить синтаксис плейбука с учетом секретов
+ansible-check:
+	ansible-playbook -i ansible/hosts.ini ansible/site.yaml --syntax-check
+
+ansible-test:
+	ansible-playbook -i ansible/hosts.ini ansible/site.yaml --check --diff
+
+# Накати́ть конфигурацию на хосты (Реальный деплой)
+ansible-deploy:
+	ansible-playbook -i ansible/hosts.ini ansible/site.yaml
+
+
+
 
 # Балансировщик для проверки доступности API Kubernetes
 K8S_API_URL = https://127.0.0.1:6443/readyz

@@ -13,7 +13,8 @@ vrrp_instance VI_1 {
 
     authentication {
         auth_type PASS
-        auth_pass {{ vault_keepalived_pass }}
+        # Подставляем переменную, которая ссылается на vault
+        auth_pass {{ keepalived_auth_pass }}
     }
 
     virtual_ipaddress {

@@ -13,7 +13,7 @@
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig
 # ==============================================================================
 - name: Экспорт доступов из кластера K3s
-  hosts: k3s-master-1
+  hosts: k3s_masters
   gather_facts: false
   roles:
     - k3s_kubeconfig
@@ -25,6 +25,7 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-    - roles/k8s_deploy/vars/secrets.yaml
+    - ../group_vars/all/vars.yml   # переменные
+    - ../group_vars/all/vault.yml  # секреты
   roles:
     - k8s_deploy
