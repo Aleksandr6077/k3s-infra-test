@@ -105,6 +105,7 @@ volumes:
   k3s-master-1-data:
   k3s-master-2-data:
   k3s-master-3-data:
+  registry_data:
 
 networks:
   k3s-net:

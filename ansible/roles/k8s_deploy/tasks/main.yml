@@ -51,6 +51,7 @@
     chart_ref: grafana/loki
     release_namespace: monitoring
     timeout: 3m
+    update_repo_cache: true 
     values_files:
       - "{{ loki_values_path }}"
     state: present
@@ -66,6 +67,7 @@
     chart_ref: prometheus-community/kube-prometheus-stack
     release_namespace: monitoring
     timeout: 3m
+    update_repo_cache: true 
     values_files:
       - "{{ mon_values_path }}"
     state: present
