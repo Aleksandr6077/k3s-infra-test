@@ -4,8 +4,24 @@
     dest: "{{ playbook_dir }}/../local-infra/haproxy/keepalived.conf"
     mode: '0644'
 
+- name: Перечитываем конфигурацию Keepalived на первом балансировщике (на лету)
+  ansible.builtin.command:
+    cmd: "docker exec haproxy-1 killall -HUP keepalived"
+  delegate_to: localhost
+  changed_when: true
+  failed_when: false # Защита: если контейнер еще не стартовал или занят, плейбук не упадет
+
+- name: Перечитываем конфигурацию Keepalived на втором балансировщике (на лету)
+  ansible.builtin.command:
+    cmd: "docker exec haproxy-2 killall -HUP keepalived"
+  delegate_to: localhost
+  changed_when: true
+  failed_when: false # Защита
+
 - name: Создаем пространство имен monitoring для стека мониторинга
   kubernetes.core.k8s:
+    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    context: default
     name: monitoring
     kind: Namespace
     state: present
@@ -16,6 +32,8 @@
 
 - name: Создаем Kubernetes секрет с паролем от Grafana из Ansible Vault
   kubernetes.core.k8s:
+    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    context: default
     state: present
     definition:
       apiVersion: v1
@@ -47,6 +65,8 @@
 
 - name: Устанавливаем Grafana Loki (Сбор логов)
   kubernetes.core.helm:
+    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    context: default
     name: loki
     chart_ref: grafana/loki
     release_namespace: monitoring
@@ -63,6 +83,8 @@
 
 - name: Устанавливаем Prometheus Operator + Grafana (Сбор метрик)
   kubernetes.core.helm:
+    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    context: default
     name: kube-prom
     chart_ref: prometheus-community/kube-prometheus-stack
     release_namespace: monitoring
@@ -79,11 +101,15 @@
 
 - name: Применяем кастомный манифест Node Exporter (DaemonSet + Service)
   kubernetes.core.k8s:
+    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    context: default
     state: present
     src: "{{ node_exporter_manifest }}"
 
 - name: Разворачиваем целевое веб-приложение Nginx (PVC + Deployment + Service + Ingress)
   kubernetes.core.k8s:
+    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    context: default
     state: present
     namespace: default
     src: "{{ app_manifest }}"

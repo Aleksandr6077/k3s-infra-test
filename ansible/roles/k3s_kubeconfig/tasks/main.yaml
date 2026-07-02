@@ -15,8 +15,8 @@
 - name: Меняем адрес подключения на балансировщик HAProxy
   ansible.builtin.replace:
     path: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
-    regexp: 'https://127.0.0.1:6443'
-    replace: 'https://{{ haproxy_balancer_ip | default("127.0.0.1") }}:6443'
+    regexp: 'server:\s+https://.*:6443'
+    replace: 'server: https://{{ haproxy_balancer_ip | default("127.0.0.1") }}:6443'
   delegate_to: localhost
   run_once: true
 
