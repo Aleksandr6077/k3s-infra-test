@@ -4,12 +4,25 @@
     dest: "{{ playbook_dir }}/../local-infra/haproxy/keepalived.conf"
     mode: '0644'
 
-- name: Перечитываем конфигурацию Keepalived на первом балансировщике (на лету)
+- name: Генерация локального haproxy.cfg из шаблона Jinja2
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: "{{ playbook_dir }}/../local-infra/haproxy/haproxy.cfg"
+    mode: '0644'
+
+- name: Перечитываем конфигурацию HAProxy на первом балансировщике (на лету)
   ansible.builtin.command:
-    cmd: "docker exec haproxy-1 killall -HUP keepalived"
+    cmd: "docker exec haproxy-1 haproxy -f /usr/local/etc/haproxy/haproxy.cfg -p /run/haproxy.pid -sf $(cat /run/haproxy.pid)"
   delegate_to: localhost
   changed_when: true
-  failed_when: false # Защита: если контейнер еще не стартовал или занят, плейбук не упадет
+  failed_when: false
+
+- name: Перечитываем конфигурацию HAProxy на втором балансировщике (на лету)
+  ansible.builtin.command:
+    cmd: "docker exec haproxy-2 haproxy -f /usr/local/etc/haproxy/haproxy.cfg -p /run/haproxy.pid -sf $(cat /run/haproxy.pid)"
+  delegate_to: localhost
+  changed_when: true
+  failed_when: false
 
 - name: Перечитываем конфигурацию Keepalived на втором балансировщике (на лету)
   ansible.builtin.command:

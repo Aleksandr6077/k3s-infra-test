@@ -10,6 +10,36 @@
     - wsl_env
 
 # ==============================================================================
+# ЭТАП 1.5: Установка K3s на облачные виртуалки Яндекса
+# ==============================================================================
+- name: Развертывание высокодоступного кластера K3s в Облаке
+  hosts: k3s_masters
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Инициализация первого мастера K3s (Кластер-инит)
+      ansible.builtin.shell:
+        cmd: >
+          curl -sfL https://get.k3s.io | sh -s - server 
+          --cluster-init 
+          --tls-san={{ yandex_lb_ip }} 
+          --node-ip={{ ansible_default_ipv4.address }}
+          --token=SECRET_CLUSTER_TOKEN
+        creates: /usr/local/bin/k3s
+      when: inventory_hostname == groups['k3s_masters'][0]
+
+    - name: Подключение остальных мастеров к кворуму кластера
+      ansible.builtin.shell:
+        cmd: >
+          curl -sfL https://get.k3s.io | sh -s - server 
+          --server https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443 
+          --tls-san={{ yandex_lb_ip }} 
+          --node-ip={{ ansible_default_ipv4.address }}
+          --token=SECRET_CLUSTER_TOKEN
+        creates: /usr/local/bin/k3s
+      when: inventory_hostname != groups['k3s_masters'][0]
+
+# ==============================================================================
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig
 # ==============================================================================
 - name: Экспорт доступов из кластера K3s
@@ -25,7 +55,24 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-    - ../group_vars/all/vars.yml   # переменные
-    - ../group_vars/all/vault.yml  # секреты
+    - ../group_vars/all/vars.yml   
+    - ../group_vars/all/vault.yml  
+  pre_tasks:
+    - name: Динамическое обновление адреса API-сервера в локальном Kubeconfig
+      ansible.builtin.replace:
+        path: "~/.kube/config"
+        # Меняем старый локалхост на IP облачного балансировщика, взятый из инвентаря
+        regexp: 'server: https://.*:6443'
+        replace: "server: https://{{ yandex_lb_ip }}:6443"
+
+    - name: Добавление флага insecure для работы по публичному IP облака
+      ansible.builtin.replace:
+        path: "~/.kube/config"
+        regexp: 'certificate-authority-data: .*'
+        replace: 'insecure-skip-tls-verify: true'
   roles:
     - k8s_deploy
+
+
+
+

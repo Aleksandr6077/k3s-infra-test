@@ -1,24 +1,28 @@
 ---
-- name: Вытягиваем kubeconfig напрямую через Docker CLI
-  ansible.builtin.command:
-    cmd: "docker cp {{ inventory_hostname }}:/etc/rancher/k3s/k3s.yaml {{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
-  delegate_to: localhost
+- name: Читаем kubeconfig с удаленного облачного мастера K3s
+  ansible.builtin.slurp:
+    src: /etc/rancher/k3s/k3s.yaml
+  register: remote_kubeconfig
   run_once: true
+  become: true
 
-- name: Выставляем безопасные права на файл конфигурации
-  ansible.builtin.file:
-    path: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+- name: Сохраняем kubeconfig локально в домашнюю папку .kube
+  ansible.builtin.copy:
+    content: "{{ remote_kubeconfig['content'] | b64decode }}"
+    dest: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
     mode: '0600'
   delegate_to: localhost
   run_once: true
 
-- name: Меняем адрес подключения на балансировщик HAProxy
+- name: Меняем адрес подключения на локальный балансировщик HAProxy
   ansible.builtin.replace:
     path: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
     regexp: 'server:\s+https://.*:6443'
-    replace: 'server: https://{{ haproxy_balancer_ip | default("127.0.0.1") }}:6443'
+    replace: 'server: https://127.0.0.1:6443'
   delegate_to: localhost
   run_once: true
+
+
 
 
 

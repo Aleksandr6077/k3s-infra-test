@@ -1,3 +1,14 @@
 .ansible_vault_pass.txt
 local-infra/haproxy/keepalived.conf
 ansible/hosts.ini
+# Игнорируем стейт-файлы инфраструктуры
+*.tfstate
+*.tfstate.backup
+.terraform/
+.tofu/
+# Игнорируем всё внутри папки terraform, что относится к стейту и плагинам
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+index.html
