@@ -1,35 +1,7 @@
-- name: Генерация локального keepalived.conf из Ansible Vault
-  ansible.builtin.template:
-    src: keepalived.conf.j2
-    dest: "{{ playbook_dir }}/../local-infra/haproxy/keepalived.conf"
-    mode: '0644'
-
-- name: Генерация локального haproxy.cfg из шаблона Jinja2
-  ansible.builtin.template:
-    src: haproxy.cfg.j2
-    dest: "{{ playbook_dir }}/../local-infra/haproxy/haproxy.cfg"
-    mode: '0644'
-
-- name: Перечитываем конфигурацию HAProxy на первом балансировщике (на лету)
-  ansible.builtin.command:
-    cmd: "docker exec haproxy-1 haproxy -f /usr/local/etc/haproxy/haproxy.cfg -p /run/haproxy.pid -sf $(cat /run/haproxy.pid)"
-  delegate_to: localhost
-  changed_when: true
-  failed_when: false
-
-- name: Перечитываем конфигурацию HAProxy на втором балансировщике (на лету)
-  ansible.builtin.command:
-    cmd: "docker exec haproxy-2 haproxy -f /usr/local/etc/haproxy/haproxy.cfg -p /run/haproxy.pid -sf $(cat /run/haproxy.pid)"
-  delegate_to: localhost
-  changed_when: true
-  failed_when: false
-
-- name: Перечитываем конфигурацию Keepalived на втором балансировщике (на лету)
-  ansible.builtin.command:
-    cmd: "docker exec haproxy-2 killall -HUP keepalived"
-  delegate_to: localhost
-  changed_when: true
-  failed_when: false # Защита
+---
+# ==============================================================================
+# ДЕПЛОЙ ИНФРАСТРУКТУРЫ МОНИТОРИНГА И ПРИЛОЖЕНИЙ (Yandex NLB Версия)
+# ==============================================================================
 
 - name: Создаем пространство имен monitoring для стека мониторинга
   kubernetes.core.k8s:
@@ -59,7 +31,6 @@
         admin-user: "{{ vault_grafana_admin_user }}"
         admin-password: "{{ vault_grafana_admin_password }}"
   register: secret_creation
-  # Наш блок защиты: если API-сервер на секунду задумается, Ansible подождет
   until: secret_creation is success
   retries: 10
   delay: 5
@@ -73,7 +44,7 @@
     - { name: 'prometheus-community', url: 'https://prometheus-community.github.io/helm-charts' }
 
 - name: Обновляем локальный кэш Helm-репозиториев
-  command: helm repo update
+  ansible.builtin.command: helm repo update
   changed_when: false
 
 - name: Устанавливаем Grafana Loki (Сбор логов)
@@ -84,7 +55,6 @@
     chart_ref: grafana/loki
     release_namespace: monitoring
     timeout: 3m
-    update_repo_cache: true 
     values_files:
       - "{{ loki_values_path }}"
     state: present
@@ -102,7 +72,6 @@
     chart_ref: prometheus-community/kube-prometheus-stack
     release_namespace: monitoring
     timeout: 3m
-    update_repo_cache: true 
     values_files:
       - "{{ mon_values_path }}"
     state: present

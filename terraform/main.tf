@@ -1,3 +1,14 @@
+locals {
+  # Служебные диапазоны Yandex Cloud для проверок здоровья (Healthchecks) балансировщика NLB
+  yc_internal_lb_healthchecks = [
+    "198.18.235.0/24",
+    "198.18.248.0/24"
+  ]
+
+  # Объединяем IP и диапазоны проверок Яндекса в один список для порта K3s API
+  k3s_api_allowed_cidrs = concat(var.admin_allowed_ips, local.yc_internal_lb_healthchecks)
+}
+
 # ==============================================================================
 # 1. СЕТЕВАЯ ИНФРАСТРУКТУРА (VPC, СУБНЕТ, ПУБЛИЧНЫЙ IP)
 # ==============================================================================
@@ -25,42 +36,42 @@ resource "yandex_vpc_address" "lb_ip" {
 # ==============================================================================
 resource "yandex_vpc_security_group" "k3s_sg" {
   name        = "k3s-security-group"
-  description = "Правила фильтрации трафика для k3s"
+  description = "Правила фильтрации трафика для k3s (Production-ready)"
   network_id  = yandex_vpc_network.k3s_network.id
 
-  # Входящий SSH для Ansible из WSL2
+  # Входящий SSH только для доверенных административных IP
   ingress {
     protocol       = "TCP"
-    description    = "Разрешить SSH для управления"
-    v4_cidr_blocks = ["0.0.0.0/0"]
+    description    = "Разрешить SSH для управления (только для админа)"
+    v4_cidr_blocks = var.admin_allowed_ips
     port           = 22
   }
 
-  # Входящий HTTP
+  # Входящий HTTP (открыт для всех пользователей)
   ingress {
     protocol       = "TCP"
-    description    = "Входящий HTTP"
+    description    = "Входящий HTTP для веб-сервисов"
     v4_cidr_blocks = ["0.0.0.0/0"]
     port           = 80
   }
 
-  # Входящий HTTPS
+  # Входящий HTTPS (открыт для всех пользователей)
   ingress {
     protocol       = "TCP"
-    description    = "Входящий HTTPS"
+    description    = "Входящий HTTPS для веб-сервисов"
     v4_cidr_blocks = ["0.0.0.0/0"]
     port           = 443
   }
 
-  # Входящий трафик для Kubernetes API
+  # Входящий трафик для Kubernetes API (Защищенный Control Plane)
   ingress {
     protocol       = "TCP"
-    description    = "Kubernetes API"
-    v4_cidr_blocks = ["0.0.0.0/0"]
+    description    = "Kubernetes API (Только админ + Healthchecks балансировщика Yandex)"
+    v4_cidr_blocks = local.k3s_api_allowed_cidrs
     port           = 6443
   }
 
-  # Разрешаем ВСЁ внутри подсети для межсерверного общения K3s
+  # Разрешаем ВСЁ внутри подсети для межсерверного общения K3s (etcd/Flannel/Calico)
   ingress {
     protocol       = "ANY"
     description    = "Внутренний трафик между нодами"
@@ -69,7 +80,7 @@ resource "yandex_vpc_security_group" "k3s_sg" {
     to_port        = 65535
   }
 
-  # Исходящий трафик в интернет
+  # Исходящий трафик в интернет (скачивание образов, пакетов, обновлений)
   egress {
     protocol       = "ANY"
     description    = "Разрешить выход в интернет"
@@ -78,6 +89,7 @@ resource "yandex_vpc_security_group" "k3s_sg" {
     to_port        = 65535
   }
 }
+
 
 # ==============================================================================
 # 3. ОБРАЗ ОПЕРАЦИОННОЙ СИСТЕМЫ

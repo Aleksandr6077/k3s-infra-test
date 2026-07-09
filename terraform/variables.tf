@@ -28,3 +28,8 @@ variable "ssh_public_key_path" {
   description = "Путь к файлу публичного SSH-ключа на локальной машине."
 }
 
+variable "admin_allowed_ips" {
+  type        = list(string)
+  description = "Список административных IP-адресов в формате CIDR (например, ['85.90.10.20/32']), которым разрешен доступ к SSH и Kubernetes API"
+}
+

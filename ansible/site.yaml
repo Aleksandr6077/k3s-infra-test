@@ -10,7 +10,7 @@
     - wsl_env
 
 # ==============================================================================
-# ЭТАП 1.5: Установка K3s на облачные виртуалки Яндекса
+# ЭТАП 1.5: Установка K3s на облачные виртуалки Яндекса (Production-ready)
 # ==============================================================================
 - name: Развертывание высокодоступного кластера K3s в Облаке
   hosts: k3s_masters
@@ -25,10 +25,19 @@
           --tls-san={{ yandex_lb_ip }} 
           --node-ip={{ ansible_default_ipv4.address }}
           --token=SECRET_CLUSTER_TOKEN
-        creates: /usr/local/bin/k3s
+        creates: /etc/rancher/k3s/k3s.yaml
       when: inventory_hostname == groups['k3s_masters'][0]
 
-    - name: Подключение остальных мастеров к кворуму кластера
+    - name: Ожидание запуска Kubernetes API на первом мастере
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}"
+        port: 6443
+        delay: 5
+        timeout: 60
+        state: started
+      when: inventory_hostname != groups['k3s_masters'][0]
+
+    - name: Подключение остальных мастеров к кворуму кластера (Строго по очереди)
       ansible.builtin.shell:
         cmd: >
           curl -sfL https://get.k3s.io | sh -s - server 
@@ -36,8 +45,9 @@
           --tls-san={{ yandex_lb_ip }} 
           --node-ip={{ ansible_default_ipv4.address }}
           --token=SECRET_CLUSTER_TOKEN
-        creates: /usr/local/bin/k3s
+        creates: /etc/rancher/k3s/k3s.yaml
       when: inventory_hostname != groups['k3s_masters'][0]
+      throttle: 1  # Заставляет Ansible подключать ноды строго по одной
 
 # ==============================================================================
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig

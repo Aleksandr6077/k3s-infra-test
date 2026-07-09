@@ -12,3 +12,11 @@ terraform/*.tfstate
 terraform/*.tfstate.backup
 terraform/.terraform.lock.hcl
 index.html
+# Локальные файлы переменных
+*.tfvars
+*.tfvars.json
+
+# Скриншоты и изображения
+*.png
+*.jpg
+*.jpeg
