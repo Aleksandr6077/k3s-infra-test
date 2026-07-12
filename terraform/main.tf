@@ -112,6 +112,11 @@ resource "yandex_compute_instance" "k3s_masters" {
     memory        = 2
     core_fraction = 20
   }
+  
+  # Политика планирования для создания прерываемых (дешевых) ВМ
+  scheduling_policy {
+    preemptible = true
+  }
 
   boot_disk {
     initialize_params {
