@@ -20,7 +20,8 @@ resource "yandex_vpc_subnet" "k3s_subnet" {
   name           = "k3s-subnet"
   zone           = "ru-central1-a"
   network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.128.0.0/24"]
+  v4_cidr_blocks = ["10.200.0.0/24"]
+  route_table_id = yandex_vpc_route_table.k3s_route_table.id # Привязываем шлюз к подсети
 }
 
 # Выделяем статический публичный IP для балансировщика, чтобы не гадать с индексами
@@ -28,6 +29,23 @@ resource "yandex_vpc_address" "lb_ip" {
   name = "k3s-lb-public-ip"
   external_ipv4_address {
     zone_id = "ru-central1-a"
+  }
+}
+
+# Создаем шлюз NAT для безопасного выхода в интернет без публичных IP
+resource "yandex_vpc_gateway" "k3s_nat_gateway" {
+  name = "k3s-nat-gateway"
+  shared_egress_gateway {}
+}
+
+# Создаем таблицу маршрутизации, которая направляет трафик через NAT-шлюз
+resource "yandex_vpc_route_table" "k3s_route_table" {
+  name       = "k3s-route-table"
+  network_id = yandex_vpc_network.k3s_network.id
+
+  static_route {
+    destination_prefix = "0.0.0.0/0"
+    gateway_id         = yandex_vpc_gateway.k3s_nat_gateway.id
   }
 }
 
@@ -75,7 +93,7 @@ resource "yandex_vpc_security_group" "k3s_sg" {
   ingress {
     protocol       = "ANY"
     description    = "Внутренний трафик между нодами"
-    v4_cidr_blocks = ["10.128.0.0/24"]
+    v4_cidr_blocks = ["10.200.0.0/24"]
     from_port      = 0
     to_port        = 65535
   }
@@ -127,7 +145,7 @@ resource "yandex_compute_instance" "k3s_masters" {
 
   network_interface {
     subnet_id          = yandex_vpc_subnet.k3s_subnet.id
-    nat                = true
+    nat                = count.index == 0 ? true : false # NAT включен ТОЛЬКО для первого мастера (k3s-master-1)
     security_group_ids = [yandex_vpc_security_group.k3s_sg.id]
   }
 
@@ -136,6 +154,11 @@ resource "yandex_compute_instance" "k3s_masters" {
   ssh-keys = "ubuntu:${var.ssh_public_key != "" ? var.ssh_public_key : file(var.ssh_public_key_path)}"
   }
 
+# Принудительная последовательность: мастера начнут создаваться ТОЛЬКО после того,
+  # как Яндекс выделит и зафиксирует статический IP-адрес для балансировщика
+  depends_on = [
+    yandex_vpc_address.lb_ip
+  ]
 }
 
 # ==============================================================================
@@ -161,9 +184,9 @@ resource "yandex_lb_network_load_balancer" "k3s_lb" {
     port        = 6443
     target_port = 6443
     
+    # Заставляем Яндекс автоматически выдать балансировщику внешний динамический IP
     external_address_spec {
-      # Вместо address_id передаем напрямую сгенерированный строковый IP-адрес
-      address = yandex_vpc_address.lb_ip.external_ipv4_address[0].address
+      ip_version = "ipv4"
     }
   }
 
@@ -185,14 +208,22 @@ resource "yandex_lb_network_load_balancer" "k3s_lb" {
 resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/hosts.ini.tpl",
     {
-      k3s_masters_public_ips   = yandex_compute_instance.k3s_masters[*].network_interface[0].nat_ip_address
-      k3s_masters_internal_ips = yandex_compute_instance.k3s_masters[*].network_interface[0].ip_address
-      # Читаем чистую строку IP из ресурса адреса
-      yandex_lb_ip               = yandex_vpc_address.lb_ip.external_ipv4_address[0].address
+      # Явно берем [0]-й сетевой интерфейс для каждой ноды мастера
+      k3s_masters_public_ips   = [for vm in yandex_compute_instance.k3s_masters : vm.network_interface[0].nat_ip_address]
+      k3s_masters_internal_ips = [for vm in yandex_compute_instance.k3s_masters : vm.network_interface[0].ip_address]
+      
+      # Твой честный перебор балансировщика оставляем как есть
+      yandex_lb_ip = [for l in yandex_lb_network_load_balancer.k3s_lb.listener : [for e in l.external_address_spec : e.address][0]][0]
     }
   )
   filename = "${path.module}/../ansible/hosts.ini"
 }
+
+
+
+
+
+
 
 
 

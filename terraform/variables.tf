@@ -13,7 +13,7 @@ variable "yc_cloud_id" {
 variable "yc_folder_id" {
   type        = string
   description = "ID твоего каталога (folder)"
-  default     = null
+  default     = "b1g3t25pff7pdao6upbs"
 }
 
 variable "ssh_public_key" {
@@ -32,4 +32,5 @@ variable "admin_allowed_ips" {
   type        = list(string)
   description = "Список административных IP-адресов в формате CIDR (например, ['85.90.10.20/32']), которым разрешен доступ к SSH и Kubernetes API"
 }
+
 

@@ -1,11 +1,18 @@
+# ==============================================================================
+# 7. ВЫВОД ПЕРЕМЕННЫХ (OUTPUTS)
+# ==============================================================================
+
 output "k3s_balancer_public_ip" {
   description = "Публичный IP-адрес облачного балансировщика Yandex NLB"
-  value       = yandex_vpc_address.lb_ip.external_ipv4_address[0].address
+  value       = one(one(yandex_lb_network_load_balancer.k3s_lb.listener).external_address_spec).address
 }
 
-output "k3s_masters_public_ips" {
-  description = "Публичные IP-адреса мастеров для управления через Ansible"
-  value       = yandex_compute_instance.k3s_masters[*].network_interface[0].nat_ip_address
+output "k3s_masters_internal_ips" {
+  description = "Внутренние IP-адреса мастеров в приватной подсети для Ansible"
+  value       = yandex_compute_instance.k3s_masters[*].network_interface[0].ip_address
 }
+
+
+
 
 
