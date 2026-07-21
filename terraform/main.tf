@@ -10,35 +10,42 @@ locals {
 }
 
 # ==============================================================================
-# 1. СЕТЕВАЯ ИНФРАСТРУКТУРА (VPC, СУБНЕТ, ПУБЛИЧНЫЙ IP)
+# 1. СЕТЕВАЯ ИНФРАСТРУКТУРА (VPC, ПУБЛИЧНАЯ И ПРИВАТНАЯ СУБНЕТЫ)
 # ==============================================================================
 resource "yandex_vpc_network" "k3s_network" {
   name = "k3s-network"
 }
 
-resource "yandex_vpc_subnet" "k3s_subnet" {
-  name           = "k3s-subnet"
+# Публичная подсеть для Бастиона (k3s-master-1) — трафик идет напрямую без NAT-шлюза
+resource "yandex_vpc_subnet" "k3s_public_subnet" {
+  name           = "k3s-public-subnet"
   zone           = "ru-central1-a"
   network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.200.0.0/24"]
-  route_table_id = yandex_vpc_route_table.k3s_route_table.id # Привязываем шлюз к подсети
+  v4_cidr_blocks = ["10.200.1.0/24"]
+  # route_table_id здесь НЕ ПРИВЯЗЫВАЕМ, чтобы не ломать SSH-доступ к белому IP
 }
 
-# Выделяем статический публичный IP для балансировщика, чтобы не гадать с индексами
-resource "yandex_vpc_address" "lb_ip" {
-  name = "k3s-lb-public-ip"
-  external_ipv4_address {
-    zone_id = "ru-central1-a"
-  }
+# Приватная подсеть для остальных мастеров — трафик в интернет идет через NAT-шлюз
+resource "yandex_vpc_subnet" "k3s_private_subnet" {
+  name           = "k3s-private-subnet"
+  zone           = "ru-central1-a"
+  network_id     = yandex_vpc_network.k3s_network.id
+  v4_cidr_blocks = ["10.200.2.0/24"]
+  route_table_id = yandex_vpc_route_table.k3s_route_table.id # Привязываем NAT-шлюз только сюда
 }
 
-# Создаем шлюз NAT для безопасного выхода в интернет без публичных IP
+# Подключаем созданный вручную статический IP-адрес через Data Source
+data "yandex_vpc_address" "lb_ip" {
+  name = "k3s-lb-static-ip"
+}
+
+# Создаем шлюз NAT для безопасного выхода в интернет приватных нод
 resource "yandex_vpc_gateway" "k3s_nat_gateway" {
   name = "k3s-nat-gateway"
   shared_egress_gateway {}
 }
 
-# Создаем таблицу маршрутизации, которая направляет трафик через NAT-шлюз
+# Создаем таблицу маршрутизации для приватного контура
 resource "yandex_vpc_route_table" "k3s_route_table" {
   name       = "k3s-route-table"
   network_id = yandex_vpc_network.k3s_network.id
@@ -48,6 +55,7 @@ resource "yandex_vpc_route_table" "k3s_route_table" {
     gateway_id         = yandex_vpc_gateway.k3s_nat_gateway.id
   }
 }
+
 
 # ==============================================================================
 # 2. ФАЙРВОЛ (SECURITY GROUP)
@@ -89,11 +97,11 @@ resource "yandex_vpc_security_group" "k3s_sg" {
     port           = 6443
   }
 
-  # Разрешаем ВСЁ внутри подсети для межсерверного общения K3s (etcd/Flannel/Calico)
+  # Разрешаем ВСЁ внутри всего диапазона проекта для межсерверного общения K3s (etcd/Flannel/Calico)
   ingress {
     protocol       = "ANY"
-    description    = "Внутренний трафик между нодами"
-    v4_cidr_blocks = ["10.200.0.0/24"]
+    description    = "Внутренний трафик между публичной и приватной подсетями"
+    v4_cidr_blocks = ["10.200.1.0/24", "10.200.2.0/24"]
     from_port      = 0
     to_port        = 65535
   }
@@ -144,22 +152,19 @@ resource "yandex_compute_instance" "k3s_masters" {
   }
 
   network_interface {
-    subnet_id          = yandex_vpc_subnet.k3s_subnet.id
-    nat                = count.index == 0 ? true : false # NAT включен ТОЛЬКО для первого мастера (k3s-master-1)
+    # Динамически выбираем подсеть: первый мастер идет в публичную, остальные — в приватную
+    subnet_id          = count.index == 0 ? yandex_vpc_subnet.k3s_public_subnet.id : yandex_vpc_subnet.k3s_private_subnet.id
+    nat                = count.index == 0 ? true : false # NAT включен ТОЛЬКО для первого мастера
     security_group_ids = [yandex_vpc_security_group.k3s_sg.id]
   }
 
   metadata = {
-  # Если переменная ssh_public_key не пустая, берем её. Иначе читаем файл по указанному пути.
-  ssh-keys = "ubuntu:${var.ssh_public_key != "" ? var.ssh_public_key : file(var.ssh_public_key_path)}"
+    # Если переменная ssh_public_key не пустая, берем её. Иначе читаем файл по указанному пути.
+    ssh-keys = "ubuntu:${var.ssh_public_key != "" ? var.ssh_public_key : file(var.ssh_public_key_path)}"
   }
-
-# Принудительная последовательность: мастера начнут создаваться ТОЛЬКО после того,
-  # как Яндекс выделит и зафиксирует статический IP-адрес для балансировщика
-  depends_on = [
-    yandex_vpc_address.lb_ip
-  ]
 }
+
+
 
 # ==============================================================================
 # 5. ОБЛАЧНЫЙ БАЛАНСИРОВЩИК (YANDEX NETWORK LOAD BALANCER)
@@ -170,7 +175,8 @@ resource "yandex_lb_target_group" "k3s_masters_group" {
   dynamic "target" {
     for_each = yandex_compute_instance.k3s_masters
     content {
-      subnet_id = yandex_vpc_subnet.k3s_subnet.id
+      # Динамически подставляем ID той подсети, в которой физически нарезана текущая ВМ
+      subnet_id = target.value.network_interface[0].subnet_id
       address   = target.value.network_interface[0].ip_address
     }
   }
@@ -179,14 +185,14 @@ resource "yandex_lb_target_group" "k3s_masters_group" {
 resource "yandex_lb_network_load_balancer" "k3s_lb" {
   name = "k3s-network-load-balancer"
 
-  listener {
+    listener {
     name        = "k3s-api-listener"
     port        = 6443
     target_port = 6443
     
-    # Заставляем Яндекс автоматически выдать балансировщику внешний динамический IP
+    # синтаксис: извлекаем объект адреса из списка через функцию one()
     external_address_spec {
-      ip_version = "ipv4"
+      address = one(data.yandex_vpc_address.lb_ip.external_ipv4_address).address
     }
   }
 
