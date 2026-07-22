@@ -133,6 +133,14 @@ resource "yandex_compute_instance" "k3s_masters" {
   zone        = "ru-central1-a"
   platform_id = "standard-v3"
 
+  # Внедряем метки (теги) для динамического инвентаря Ansible
+  labels = {
+    repo       = "k3s-infra-test"
+    role       = "k3s-master"
+    # Первый мастер (индекс 0) помечаем как бастион/прокси, остальные — false
+    is_bastion = count.index == 0 ? "true" : "false"
+  }
+
   resources {
     cores         = 2
     memory        = 2
@@ -163,7 +171,6 @@ resource "yandex_compute_instance" "k3s_masters" {
     ssh-keys = "ubuntu:${var.ssh_public_key != "" ? var.ssh_public_key : file(var.ssh_public_key_path)}"
   }
 }
-
 
 
 # ==============================================================================
@@ -214,12 +221,11 @@ resource "yandex_lb_network_load_balancer" "k3s_lb" {
 resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/hosts.ini.tpl",
     {
-      # Явно берем [0]-й сетевой интерфейс для каждой ноды мастера
       k3s_masters_public_ips   = [for vm in yandex_compute_instance.k3s_masters : vm.network_interface[0].nat_ip_address]
       k3s_masters_internal_ips = [for vm in yandex_compute_instance.k3s_masters : vm.network_interface[0].ip_address]
       
-      # Твой честный перебор балансировщика оставляем как есть
-      yandex_lb_ip = [for l in yandex_lb_network_load_balancer.k3s_lb.listener : [for e in l.external_address_spec : e.address][0]][0]
+      # Безопасно вытаскиваем чистую строку IP-адреса из listener балансировщика
+       yandex_lb_ip = tolist(tolist(yandex_lb_network_load_balancer.k3s_lb.listener)[0].external_address_spec)[0].address
     }
   )
   filename = "${path.module}/../ansible/hosts.ini"
