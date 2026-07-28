@@ -33,7 +33,7 @@
 Инфраструктура полностью изолирована внутри виртуальной сети Яндекс Облака (VPC). Доступ к управляющим портам и приложениям строго фильтруется на уровне сетевого экрана. Трафик проходит следующую цепочку маршрутизации:
 
 ```text
-[ ПК / Браузер / Ansible из WSL2 ]
+[ ПК / Браузер ]
        │
        ├───────────────────────── Запрос через публичный Интернет ─────────────────────────┐
        │ (Административный трафик: SSH 22, K8s API 6443)                                   │ (Трафик приложений: HTTP/HTTPS)
@@ -90,7 +90,7 @@ k3s-infra-test/
 │   ├── roles/
 │   │   ├── k3s_kubeconfig/     # Копирование и локальный импорт kubeconfig
 │   │   ├── k8s_deploy/         # Деплой манифестов/Helm-чартов в k3s
-│   │   └── wsl_env/            # [Legacy] Подготовка локального окружения внутри WSL
+│   │   └── local_env/          # Local Management Host Setup
 │   ├── hosts.ini               # Динамический инвентарь (генерируется автоматически через OpenTofu, в .gitignore)
 │   └── site.yaml               # Главный плейбук, запускающий все роли
 ├── k8s/
@@ -195,19 +195,19 @@ k3s-infra-test/
 ☸️Kube-score и ☸️Kubernetes Dry-Run(временно заглушки, записано в тех.долге)
 ---
 
-## 🔍 Проверка и траблшутинг
+## 🔍 Verification & Troubleshooting
 
-* **Локальная проверка Ingress (L7)**: Для валидации работы Ingress-ресурса без настройки системного DNS (файла hosts) использовался локальный запрос через curl с принудительной передачей HTTP-заголовка Host. Это позволило проверить корректность маршрутизации Traefik в обход резолва домена хостом.
-  ```bash
-  curl -H "Host: my-app.local" http://127.0.0.1:80
-  ```
-* **Проверка Графаны с Windows**: Так как K3s запущен внутри изолированной среды WSL2, для доступа к веб-интерфейсу мониторинга из браузера Windows был организован временный проброс портов. Трафик туннелировался напрямую к сервису Графаны:
-  ```bash
-  kubectl port-forward -n monitoring svc/kube-prom-grafana 8080:80
-  ```
-  После запуска туннеля дашборды и логи стали успешно доступны в браузере хоста по адресу `http://localhost:8080`.
-  
- 
+*   **Local Ingress Validation (L7)**: To validate the Ingress resources without modifying the system DNS or local `hosts` file, a local HTTP request was executed via `curl` with a forced `Host` header. This verified the correctness of Traefik routing independently:
+    ```bash
+    curl -H "Host: my-app.local" http://127.0.0.1:80
+    ```
+
+*   **Secure Access to Monitoring (Grafana)**: To access the Grafana web interface securely without exposing the monitoring stack to the public internet, port forwarding was configured directly to the cluster service:
+    ```bash
+    kubectl port-forward -n monitoring svc/kube-prom-grafana 8080:80
+    ```
+    Once the tunnel is active, the Grafana dashboards and logs are accessible locally at `http://localhost:8080`.
+
  ### Сценарий Chaos Engineering (Проверка отказоустойчивости):
 1. Запусти `k9s` или выполняй `watch kubectl get nodes`.
 2. В соседнем терминале симулируй аварию одной из нод:
