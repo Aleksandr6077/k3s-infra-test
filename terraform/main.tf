@@ -65,11 +65,19 @@ resource "yandex_vpc_security_group" "k3s_sg" {
   description = "Правила фильтрации трафика для k3s (Production-ready)"
   network_id  = yandex_vpc_network.k3s_network.id
 
-  # Входящий SSH только для доверенных административных IP
+  # Входящий SSH на Бастион из внешнего мира (только для админа)
   ingress {
     protocol       = "TCP"
-    description    = "Разрешить SSH для управления (только для админа)"
+    description    = "Разрешить SSH на Bastion извне (только для админа)"
     v4_cidr_blocks = var.admin_allowed_ips
+    port           = 22
+  }
+
+  # Входящий SSH на Мастера изнутри сети (только с Бастиона)
+  ingress {
+    protocol       = "TCP"
+    description    = "Разрешить SSH на приватные ноды только из внутренней публичной подсети (где Bastion)"
+    v4_cidr_blocks = ["10.200.1.0/24"] # CIDR вашей k3s_public_subnet
     port           = 22
   }
 
@@ -117,6 +125,7 @@ resource "yandex_vpc_security_group" "k3s_sg" {
 }
 
 
+
 # ==============================================================================
 # 3. ОБРАЗ ОПЕРАЦИОННОЙ СИСТЕМЫ
 # ==============================================================================
@@ -125,7 +134,7 @@ data "yandex_compute_image" "ubuntu" {
 }
 
 # ==============================================================================
-# 4. ВИРТУАЛЬНЫЕ МАШИНЫ (K3S MASTERS)
+# 4. ВИРТУАЛЬНЫЕ МАШИНЫ (K3S MASTERS) — ПОЛНОСТЬЮ ПРИВАТНЫЕ
 # ==============================================================================
 resource "yandex_compute_instance" "k3s_masters" {
   count       = 3
@@ -133,12 +142,11 @@ resource "yandex_compute_instance" "k3s_masters" {
   zone        = "ru-central1-a"
   platform_id = "standard-v3"
 
-  # Внедряем метки (теги) для динамического инвентаря Ansible
+  # Метки для динамического инвентаря Ansible
   labels = {
     repo       = "k3s-infra-test"
     role       = "k3s-master"
-    # Первый мастер (индекс 0) помечаем как бастион/прокси, остальные — false
-    is_bastion = count.index == 0 ? "true" : "false"
+    is_bastion = "false" # Мастера больше не являются бастионами
   }
 
   resources {
@@ -160,14 +168,57 @@ resource "yandex_compute_instance" "k3s_masters" {
   }
 
   network_interface {
-    # Динамически выбираем подсеть: первый мастер идет в публичную, остальные — в приватную
-    subnet_id          = count.index == 0 ? yandex_vpc_subnet.k3s_public_subnet.id : yandex_vpc_subnet.k3s_private_subnet.id
-    nat                = count.index == 0 ? true : false # NAT включен ТОЛЬКО для первого мастера
+    # ВСЕ мастера теперь находятся строго в приватной подсети
+    subnet_id          = yandex_vpc_subnet.k3s_private_subnet.id
+    nat                = false # Публичный IP полностью отключен для всех мастеров
     security_group_ids = [yandex_vpc_security_group.k3s_sg.id]
   }
 
   metadata = {
-    # Если переменная ssh_public_key не пустая, берем её. Иначе читаем файл по указанному пути.
+    ssh-keys = "ubuntu:${var.ssh_public_key != "" ? var.ssh_public_key : file(var.ssh_public_key_path)}"
+  }
+}
+
+# ==============================================================================
+# 4.1 ВЫДЕЛЕННЫЙ BASTION-ХОСТ ДЛЯ БЕЗОПАСНОГО ДОСТУПА ПО SSH
+# ==============================================================================
+resource "yandex_compute_instance" "bastion" {
+  name        = "k3s-bastion"
+  zone        = "ru-central1-a"
+  platform_id = "standard-v3"
+
+  labels = {
+    repo       = "k3s-infra-test"
+    role       = "bastion"
+    is_bastion = "true"
+  }
+
+  # Минимальные ресурсы для экономии бюджета
+  resources {
+    cores         = 2 
+    memory        = 1 # 1 ГБ RAM вполне достаточно для проксирования трафика
+    core_fraction = 20
+  }
+
+  scheduling_policy {
+    preemptible = true # Делаем её прерываемой для максимальной дешевизны
+  }
+
+  boot_disk {
+    initialize_params {
+      image_id = data.yandex_compute_image.ubuntu.id
+      size     = 10 # Минимальный размер диска для ОС
+    }
+  }
+
+  network_interface {
+    # Бастион сажаем строго в публичную подсеть и выдаем ему публичный IP
+    subnet_id          = yandex_vpc_subnet.k3s_public_subnet.id
+    nat                = true
+    security_group_ids = [yandex_vpc_security_group.k3s_sg.id] # Ограничим доступ на следующем шаге
+  }
+
+  metadata = {
     ssh-keys = "ubuntu:${var.ssh_public_key != "" ? var.ssh_public_key : file(var.ssh_public_key_path)}"
   }
 }
@@ -216,20 +267,25 @@ resource "yandex_lb_network_load_balancer" "k3s_lb" {
 }
 
 # ==============================================================================
-# 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI)
+# 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — ОБНОВЛЕННАЯ
 # ==============================================================================
 resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/hosts.ini.tpl",
     {
-      k3s_masters_public_ips   = [for vm in yandex_compute_instance.k3s_masters : vm.network_interface[0].nat_ip_address]
+      # Передаем IP-адреса нового выделенного Бастиона
+      bastion_public_ip   = yandex_compute_instance.bastion.network_interface[0].nat_ip_address
+      bastion_internal_ip = yandex_compute_instance.bastion.network_interface[0].ip_address
+
+      # Собираем только внутренние IP мастеров (публичных у них больше нет)
       k3s_masters_internal_ips = [for vm in yandex_compute_instance.k3s_masters : vm.network_interface[0].ip_address]
       
-      # Безопасно вытаскиваем чистую строку IP-адреса из listener балансировщика
-       yandex_lb_ip = tolist(tolist(yandex_lb_network_load_balancer.k3s_lb.listener)[0].external_address_spec)[0].address
+      # Безопасно вытаскиваем чистую строку IP-адреса из listener балансировщика API
+      yandex_lb_ip = tolist(tolist(yandex_lb_network_load_balancer.k3s_lb.listener)[0].external_address_spec)[0].address
     }
   )
   filename = "${path.module}/../ansible/hosts.ini"
 }
+
 
 
 
