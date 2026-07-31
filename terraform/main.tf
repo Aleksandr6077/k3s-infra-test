@@ -34,6 +34,15 @@ resource "yandex_vpc_subnet" "k3s_private_subnet" {
   route_table_id = yandex_vpc_route_table.k3s_route_table.id # Привязываем NAT-шлюз только сюда
 }
 
+# Новая изолированная приватная подсеть строго для воркеров (Production-паттерн)
+resource "yandex_vpc_subnet" "k3s_workers_subnet" {
+  name           = "k3s-workers-subnet"
+  zone           = "ru-central1-a"
+  network_id     = yandex_vpc_network.k3s_network.id
+  v4_cidr_blocks = ["10.200.3.0/24"]
+  route_table_id = yandex_vpc_route_table.k3s_route_table.id # Переиспользуем NAT-шлюз
+}
+
 # Подключаем созданный вручную статический IP-адрес через Data Source
 data "yandex_vpc_address" "lb_ip" {
   name = "k3s-lb-static-ip"
@@ -58,38 +67,69 @@ resource "yandex_vpc_route_table" "k3s_route_table" {
 
 
 # ==============================================================================
-# 2. ФАЙРВОЛ (SECURITY GROUP)
+# 2. ФАЙРВОЛ (РАЗДЕЛЬНЫЕ SECURITY GROUPS ПО РОЛЯМ)
 # ==============================================================================
-resource "yandex_vpc_security_group" "k3s_sg" {
-  name        = "k3s-security-group"
-  description = "Правила фильтрации трафика для k3s (Production-ready)"
+
+# ГРУППА 1: Изолированный периметр для Бастиона
+resource "yandex_vpc_security_group" "bastion_sg" {
+  name        = "k3s-bastion-security-group"
+  description = "Правила фильтрации трафика строго для Bastion-хоста"
   network_id  = yandex_vpc_network.k3s_network.id
 
-  # Входящий SSH на Бастион из внешнего мира (только для админа)
+  # Входящий SSH на Бастион из внешнего мира (Только твой домашний IP)
   ingress {
     protocol       = "TCP"
     description    = "Разрешить SSH на Bastion извне (только для админа)"
-    v4_cidr_blocks = var.admin_allowed_ips
+    v4_cidr_blocks = var.admin_allowed_ips 
     port           = 22
   }
 
-  # Входящий SSH на Мастера изнутри сети (только с Бастиона)
+  # Исходящий трафик для Бастиона наружу и внутрь сети
+  egress {
+    protocol       = "ANY"
+    description    = "Разрешить Бастиону любой исходящий трафик"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# ------------------------------------------------------------------------------
+
+# ГРУППА 2: Периметр для нод кластера (Мастера + будущие Воркеры)
+resource "yandex_vpc_security_group" "cluster_sg" {
+  name        = "k3s-cluster-security-group"
+  description = "Правила фильтрации трафика для мастеров и воркеров кластера"
+  network_id  = yandex_vpc_network.k3s_network.id
+
+  # Входящий SSH на ноды кластера (РАЗРЕШЕН СТРОГО С БАСТИОНА ПО ЕГО SG ID)
+  ingress {
+    protocol          = "TCP"
+    description       = "Разрешить SSH на ноды только для участников bastion_sg"
+    security_group_id = yandex_vpc_security_group.bastion_sg.id # Ссылка на ID группы бастиона
+    port              = 22
+  }
+
+  # Полное доверие между нодами кластера (Концепция self_security_group)
+  ingress {
+    protocol          = "ANY"
+    description       = "Межнодовое общение (etcd, Flannel VXLAN, Kubelet) внутри кластера"
+    predefined_target = "self_security_group"
+  }
+
+  # Входящий Kubernetes API для внешнего мира (для твоего домашнего kubectl)
   ingress {
     protocol       = "TCP"
-    description    = "Разрешить SSH на приватные ноды только из внутренней публичной подсети (где Bastion)"
-    v4_cidr_blocks = ["10.200.1.0/24"] # CIDR вашей k3s_public_subnet
-    port           = 22
+    description    = "Kubernetes API для внешнего управления"
+    v4_cidr_blocks = local.k3s_api_allowed_cidrs
+    port           = 6443
   }
 
-  # Входящий HTTP (открыт для всех пользователей)
+  # Входящий HTTP/HTTPS для приложений (заготовка под Ingress на воркерах)
   ingress {
     protocol       = "TCP"
     description    = "Входящий HTTP для веб-сервисов"
     v4_cidr_blocks = ["0.0.0.0/0"]
     port           = 80
   }
-
-  # Входящий HTTPS (открыт для всех пользователей)
   ingress {
     protocol       = "TCP"
     description    = "Входящий HTTPS для веб-сервисов"
@@ -97,34 +137,13 @@ resource "yandex_vpc_security_group" "k3s_sg" {
     port           = 443
   }
 
-  # Входящий трафик для Kubernetes API (Защищенный Control Plane)
-  ingress {
-    protocol       = "TCP"
-    description    = "Kubernetes API (Только админ + Healthchecks балансировщика Yandex)"
-    v4_cidr_blocks = local.k3s_api_allowed_cidrs
-    port           = 6443
-  }
-
-  # Разрешаем ВСЁ внутри всего диапазона проекта для межсерверного общения K3s (etcd/Flannel/Calico)
-  ingress {
-    protocol       = "ANY"
-    description    = "Внутренний трафик между публичной и приватной подсетями"
-    v4_cidr_blocks = ["10.200.1.0/24", "10.200.2.0/24"]
-    from_port      = 0
-    to_port        = 65535
-  }
-
-  # Исходящий трафик в интернет (скачивание образов, пакетов, обновлений)
+  # Исходящий трафик для кластера (необходим для работы NAT-шлюза)
   egress {
     protocol       = "ANY"
-    description    = "Разрешить выход в интернет"
+    description    = "Разрешить любой исходящий трафик нодам кластера"
     v4_cidr_blocks = ["0.0.0.0/0"]
-    from_port      = 0
-    to_port        = 65535
   }
 }
-
-
 
 # ==============================================================================
 # 3. ОБРАЗ ОПЕРАЦИОННОЙ СИСТЕМЫ
@@ -171,7 +190,7 @@ resource "yandex_compute_instance" "k3s_masters" {
     # ВСЕ мастера теперь находятся строго в приватной подсети
     subnet_id          = yandex_vpc_subnet.k3s_private_subnet.id
     nat                = false # Публичный IP полностью отключен для всех мастеров
-    security_group_ids = [yandex_vpc_security_group.k3s_sg.id]
+    security_group_ids = [yandex_vpc_security_group.cluster_sg.id]
   }
 
   metadata = {
@@ -215,7 +234,7 @@ resource "yandex_compute_instance" "bastion" {
     # Бастион сажаем строго в публичную подсеть и выдаем ему публичный IP
     subnet_id          = yandex_vpc_subnet.k3s_public_subnet.id
     nat                = true
-    security_group_ids = [yandex_vpc_security_group.k3s_sg.id] # Ограничим доступ на следующем шаге
+    security_group_ids = [yandex_vpc_security_group.bastion_sg.id]
   }
 
   metadata = {
@@ -265,6 +284,29 @@ resource "yandex_lb_network_load_balancer" "k3s_lb" {
     }
   }
 }
+
+# ==============================================================================
+# ВНУТРЕННИЙ БАЛАНСИРОВЩИК (ЗАГОТОВКА ПОД БУДУЩИЙ INGRESS ВОРКЕРОВ)
+# ==============================================================================
+resource "yandex_lb_network_load_balancer" "k3s_internal_lb" {
+  name = "k3s-internal-network-load-balancer"
+  type = "internal" # Делает балансировщик строго приватным внутри VPC
+
+  listener {
+    name        = "k3s-internal-web-listener"
+    port        = 80
+    target_port = 80
+    
+    # Сажаем балансировщик в приватную подсеть
+    internal_address_spec {
+      subnet_id = yandex_vpc_subnet.k3s_private_subnet.id
+    }
+  }
+
+  # Блок attached_target_group полностью удален, чтобы не конфликтовать с мастерами.
+  # Мы добавим сюда новую таргет-группу воркеров на Шаге 2.
+}
+
 
 # ==============================================================================
 # 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — ОБНОВЛЕННАЯ
