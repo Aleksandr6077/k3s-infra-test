@@ -1,11 +1,11 @@
 ---
 # ==============================================================================
-# ДЕПЛОЙ ИНФРАСТРУКТУРЫ МОНИТОРИНГА И ПРИЛОЖЕНИЙ (Yandex NLB Версия)
+# ДЕПЛОЙ ИНФРАСТРУКТУРЫ МОНИТОРИНГА И ПРИЛОЖЕНИЙ (Изолированная Версия)
 # ==============================================================================
 
 - name: Создаем пространство имен monitoring для стека мониторинга
   kubernetes.core.k8s:
-    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    kubeconfig: "{{ playbook_dir }}/.kube/config"
     context: default
     name: monitoring
     kind: Namespace
@@ -17,7 +17,7 @@
 
 - name: Создаем Kubernetes секрет с паролем от Grafana из Ansible Vault
   kubernetes.core.k8s:
-    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    kubeconfig: "{{ playbook_dir }}/.kube/config"
     context: default
     state: present
     definition:
@@ -49,7 +49,7 @@
 
 - name: Устанавливаем Grafana Loki (Сбор логов)
   kubernetes.core.helm:
-    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    kubeconfig: "{{ playbook_dir }}/.kube/config"
     context: default
     name: loki
     chart_ref: grafana/loki
@@ -66,7 +66,7 @@
 
 - name: Устанавливаем Prometheus Operator + Grafana (Сбор метрик)
   kubernetes.core.helm:
-    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    kubeconfig: "{{ playbook_dir }}/.kube/config"
     context: default
     name: kube-prom
     chart_ref: prometheus-community/kube-prometheus-stack
@@ -81,20 +81,14 @@
   retries: 5
   delay: 10
 
-- name: Применяем кастомный манифест Node Exporter (DaemonSet + Service)
+- name: Разворачиваем целевое веб-приложение Nginx
   kubernetes.core.k8s:
-    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
-    context: default
-    state: present
-    src: "{{ node_exporter_manifest }}"
-
-- name: Разворачиваем целевое веб-приложение Nginx (PVC + Deployment + Service + Ingress)
-  kubernetes.core.k8s:
-    kubeconfig: "{{ hostvars['localhost']['ansible_user_dir'] }}/.kube/config"
+    kubeconfig: "{{ playbook_dir }}/.kube/config"
     context: default
     state: present
     namespace: default
     src: "{{ app_manifest }}"
+
 
 
 

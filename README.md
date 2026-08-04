@@ -91,22 +91,18 @@ k3s-infra-test/
 │   │   ├── k3s_kubeconfig/     # Копирование и локальный импорт kubeconfig
 │   │   ├── k8s_deploy/         # Деплой манифестов/Helm-чартов в k3s
 │   │   └── local_env/          # Local Management Host Setup
-│   ├── hosts.ini               # Динамический инвентарь (генерируется автоматически через OpenTofu, в .gitignore)
+│   ├── hosts.ini               # инвентарь (генерируется автоматически в момент поднятия стэнда)
 │   └── site.yaml               # Главный плейбук, запускающий все роли
 ├── k8s/
 │   ├── app.yaml                # Манифест приложения для Kubernetes
 │   ├── loki-values.yaml        # Кастомные value-параметры для сбора логов через Grafana Loki
-│   ├── mon-values.yaml         # Настройки для Prometheus/Grafana мониторинга
-│   └── node-exporter-k3s.yaml  # Манифест DaemonSet для сбора метрик с нод кластера
+│   └── mon-values.yaml         # Настройки для Prometheus/Grafana мониторинга
 ├── terraform/                  # Инфраструктура как код (IaC) для Яндекс Облака
-│   ├── hosts.ini.tpl           # Шаблон для автогенерации динамического инвентаря Ansible
+│   ├── hosts.ini.tpl           # Шаблон для автогенерации инвентаря Ansible
 │   ├── main.tf                 # Описание VPC, подсетей, Security Groups и инстансов Compute Cloud
 │   ├── outputs.tf              # Вывод публичных IP-адресов созданных машин
 │   ├── providers.tf            # Настройка провайдера Яндекса с авторизацией и зеркалом РФ
 │   └── variables.tf            # Объявление переменных для IAM-токенов облака
-├── local-infra/                # [Legacy] Локальная обвязка для Docker-окружения
-│   └── haproxy/                # Локальный балансировщик и keepalived для Docker
-├── docker-compose.yml          # [Legacy] Старый запуск локального тест-стенда в Docker
 ├── .pre-commit-config.yaml     # Локальные проверки (ansible-lint, tflint, trivy)
 ├── CHANGELOG.md                # История изменений проекта (включая миграцию в облако)
 ├── index.html                  # Заглушка для проверки (создается init подом)

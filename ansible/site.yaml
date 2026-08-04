@@ -2,31 +2,48 @@
 # ==============================================================================
 # ЭТАП 1: Настройка локального окружения разработчика
 # ==============================================================================
-- name: Настройка локального хоста WSL2
+- name: Настройка локального хоста
   hosts: localhost
   gather_facts: true
   connection: local
   roles:
-    - wsl_env
+    - local_env
 
 # ==============================================================================
-# ЭТАП 1.5: Установка K3s на облачные виртуалки Яндекса (Production-ready)
+# ЭТАП 1.5: Установка K3s на облачные виртуалки Яндекса (Автогенерация токена)
 # ==============================================================================
 - name: Развертывание высокодоступного кластера K3s в Облаке
   hosts: k3s_masters
   become: true
   gather_facts: true
   tasks:
-    - name: Инициализация первого мастера K3s (Кластер-инит)
+    - name: Инициализация первого мастера K3s (Кластер-инит без хардкода токена)
       ansible.builtin.shell:
         cmd: >
           curl -sfL https://get.k3s.io | sh -s - server 
           --cluster-init 
           --tls-san={{ yandex_lb_ip }} 
           --node-ip={{ ansible_default_ipv4.address }}
-          --token=SECRET_CLUSTER_TOKEN
         creates: /etc/rancher/k3s/k3s.yaml
       when: inventory_hostname == groups['k3s_masters'][0]
+
+    - name: Ожидание генерации токена кластера на первом мастере
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/k3s/server/node-token
+        state: present
+        timeout: 60
+      when: inventory_hostname == groups['k3s_masters'][0]
+
+    - name: Чтение сгенерированного токена с первого мастера
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: k3s_node_token_encoded
+      when: inventory_hostname == groups['k3s_masters'][0]
+
+    - name: Расшаривание токена на все хосты в памяти Ansible
+      ansible.builtin.set_fact:
+        k3s_cluster_token: "{{ hostvars[groups['k3s_masters'][0]]['k3s_node_token_encoded']['content'] | b64decode | trim }}"
+      run_once: true
 
     - name: Ожидание запуска Kubernetes API на первом мастере
       ansible.builtin.wait_for:
@@ -37,17 +54,17 @@
         state: started
       when: inventory_hostname != groups['k3s_masters'][0]
 
-    - name: Подключение остальных мастеров к кворуму кластера (Строго по очереди)
+    - name: Подключение остальных мастеров к кворуму кластера (Используем динамический токен)
       ansible.builtin.shell:
         cmd: >
           curl -sfL https://get.k3s.io | sh -s - server 
           --server https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443 
           --tls-san={{ yandex_lb_ip }} 
           --node-ip={{ ansible_default_ipv4.address }}
-          --token=SECRET_CLUSTER_TOKEN
+          --token={{ k3s_cluster_token }}
         creates: /etc/rancher/k3s/k3s.yaml
       when: inventory_hostname != groups['k3s_masters'][0]
-      throttle: 1  # Заставляет Ansible подключать ноды строго по одной
+      throttle: 1  # Подключаем ноды строго по одной, чтобы etcd успевал реплицироваться
 
 # ==============================================================================
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig
@@ -68,20 +85,14 @@
     - ../group_vars/all/vars.yml   
     - ../group_vars/all/vault.yml  
   pre_tasks:
-    - name: Динамическое обновление адреса API-сервера в локальном Kubeconfig
+    - name: Динамическое обновление адреса API-сервера на IP облачного балансировщика
       ansible.builtin.replace:
-        path: "~/.kube/config"
-        # Меняем старый локалхост на IP облачного балансировщика, взятый из инвентаря
-        regexp: 'server: https://.*:6443'
+        path: "{{ playbook_dir }}/.kube/config"
+        regexp: 'server: https://127.0.0.1:6443'
         replace: "server: https://{{ yandex_lb_ip }}:6443"
-
-    - name: Добавление флага insecure для работы по публичному IP облака
-      ansible.builtin.replace:
-        path: "~/.kube/config"
-        regexp: 'certificate-authority-data: .*'
-        replace: 'insecure-skip-tls-verify: true'
   roles:
     - k8s_deploy
+
 
 
 

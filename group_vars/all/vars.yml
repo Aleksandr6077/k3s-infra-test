@@ -3,5 +3,3 @@ grafana_admin_user: "admin"
 # Ссылка на секретную переменную (префикс vault_)
 grafana_admin_password: "{{ vault_grafana_admin_password }}"
 
-# Публичные настройки Keepalived
-keepalived_auth_pass: "{{ vault_keepalived_auth_pass }}"
