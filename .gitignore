@@ -21,3 +21,8 @@ index.html
 *.png
 *.jpg
 *.jpeg
+
+**/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
