@@ -309,17 +309,21 @@ resource "yandex_lb_network_load_balancer" "k3s_internal_lb" {
 
 
 # ==============================================================================
-# 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — ОБНОВЛЕННАЯ
+# 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — С ЗАГЛУШКОЙ ДЛЯ ВОРКЕРОВ
 # ==============================================================================
 resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/hosts.ini.tpl",
     {
-      # Передаем IP-адреса нового выделенного Бастиона
+      # Передаем IP-адреса выделенного Бастиона
       bastion_public_ip   = yandex_compute_instance.bastion.network_interface[0].nat_ip_address
       bastion_internal_ip = yandex_compute_instance.bastion.network_interface[0].ip_address
 
-      # Собираем только внутренние IP мастеров (публичных у них больше нет)
-      k3s_masters_internal_ips = [for vm in yandex_compute_instance.k3s_masters : vm.network_interface[0].ip_address]
+      # Передаем список объектов мастеров целиком для Jinja2-цикла
+      k3s_masters = yandex_compute_instance.k3s_masters
+      
+      # Временная заглушка: пустой список, чтобы шаблон не ругался на отсутствие переменной
+      # Как только будет ресурс воркеров, заменю на yandex_compute_instance.k3s_workers
+      k3s_workers = []
       
       # Безопасно вытаскиваем чистую строку IP-адреса из listener балансировщика API
       yandex_lb_ip = tolist(tolist(yandex_lb_network_load_balancer.k3s_lb.listener)[0].external_address_spec)[0].address
@@ -327,6 +331,8 @@ resource "local_file" "ansible_inventory" {
   )
   filename = "${path.module}/../ansible/hosts.ini"
 }
+
+
 
 
 
