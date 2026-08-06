@@ -207,7 +207,6 @@ resource "yandex_compute_instance" "k3s_workers" {
   zone        = each.value.zone
   platform_id = "standard-v3"
 
-  # Метки для инвентаря Ansible
   labels = {
     repo       = "k3s-infra-test"
     role       = "k3s-worker"
@@ -232,8 +231,8 @@ resource "yandex_compute_instance" "k3s_workers" {
   }
 
   network_interface {
-    # Подключаем к приватной подсети и вешаем общую группу безопасности кластера
-    subnet_id          = yandex_vpc_subnet.k3s_private_subnet.id
+    # ПЕРЕСАЖИВАЕМ ВОРКЕРЫ В ИЗОЛИРОВАННУЮ ПОДСЕТЬ (10.200.3.0/24)
+    subnet_id          = yandex_vpc_subnet.k3s_workers_subnet.id
     nat                = false
     security_group_ids = [yandex_vpc_security_group.cluster_sg.id]
   }
@@ -340,8 +339,8 @@ resource "yandex_lb_target_group" "k3s_workers_group" {
   dynamic "target" {
     for_each = yandex_compute_instance.k3s_workers
     content {
-      # Используем твой синтаксис обращения к интерфейсу сети
-      subnet_id = target.value.network_interface[0].subnet_id
+      # Пересаживаем таргеты балансировщика в подсеть воркеров
+      subnet_id = yandex_vpc_subnet.k3s_workers_subnet.id
       address   = target.value.network_interface[0].ip_address
     }
   }
@@ -356,16 +355,15 @@ resource "yandex_lb_network_load_balancer" "k3s_internal_lb" {
     port        = 80
     target_port = 80
     
-    # Сажаем балансировщик в приватную подсеть
+    # Сажаем сам балансировщик в подсеть воркеров, изолируя весь веб-контур
     internal_address_spec {
-      subnet_id = yandex_vpc_subnet.k3s_private_subnet.id
+      subnet_id = yandex_vpc_subnet.k3s_workers_subnet.id
     }
   }
 
   attached_target_group {
     target_group_id = yandex_lb_target_group.k3s_workers_group.id
 
-    # Используем правильное для Яндекса написание healthcheck
     healthcheck {
       name = "http-check"
       http_options {
