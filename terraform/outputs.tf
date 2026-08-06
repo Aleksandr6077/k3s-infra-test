@@ -22,6 +22,11 @@ output "k3s_internal_balancer_ip" {
   value       = one(one(yandex_lb_network_load_balancer.k3s_internal_lb.listener).internal_address_spec).address
 }
 
+output "k3s_workers_internal_ips" {
+  description = "Внутренние IP-адреса воркеров в приватной подсети для Ansible"
+  value       = [for worker in yandex_compute_instance.k3s_workers : worker.network_interface[0].ip_address]
+}
+
 
 
 

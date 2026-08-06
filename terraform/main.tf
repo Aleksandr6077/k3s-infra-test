@@ -199,6 +199,52 @@ resource "yandex_compute_instance" "k3s_masters" {
 }
 
 # ==============================================================================
+# 4.0 ВИРТУАЛЬНЫЕ МАШИНЫ (K3S WORKERS) — ДИНАМИЧЕСКОЕ МАСШТАБИРОВАНИЕ
+# ==============================================================================
+resource "yandex_compute_instance" "k3s_workers" {
+  for_each    = var.k3s_workers
+  name        = "k3s-${each.key}"
+  zone        = each.value.zone
+  platform_id = "standard-v3"
+
+  # Метки для инвентаря Ansible
+  labels = {
+    repo       = "k3s-infra-test"
+    role       = "k3s-worker"
+    is_bastion = "false"
+  }
+
+  resources {
+    cores         = each.value.cores
+    memory        = each.value.memory
+    core_fraction = each.value.core_fraction
+  }
+
+  scheduling_policy {
+    preemptible = true
+  }
+
+  boot_disk {
+    initialize_params {
+      image_id = data.yandex_compute_image.ubuntu.id
+      size     = each.value.disk_size
+    }
+  }
+
+  network_interface {
+    # Подключаем к приватной подсети и вешаем общую группу безопасности кластера
+    subnet_id          = yandex_vpc_subnet.k3s_private_subnet.id
+    nat                = false
+    security_group_ids = [yandex_vpc_security_group.cluster_sg.id]
+  }
+
+  metadata = {
+    ssh-keys = "ubuntu:${var.ssh_public_key != "" ? var.ssh_public_key : file(var.ssh_public_key_path)}"
+  }
+}
+
+
+# ==============================================================================
 # 4.1 ВЫДЕЛЕННЫЙ BASTION-ХОСТ ДЛЯ БЕЗОПАСНОГО ДОСТУПА ПО SSH
 # ==============================================================================
 resource "yandex_compute_instance" "bastion" {
@@ -286,8 +332,21 @@ resource "yandex_lb_network_load_balancer" "k3s_lb" {
 }
 
 # ==============================================================================
-# ВНУТРЕННИЙ БАЛАНСИРОВЩИК (ЗАГОТОВКА ПОД БУДУЩИЙ INGRESS ВОРКЕРОВ)
+# 5.1 ВНУТРЕННИЙ БАЛАНСИРОВЩИК И ЦЕЛЕВАЯ ГРУППА ДЛЯ ВОРКЕРОВ
 # ==============================================================================
+resource "yandex_lb_target_group" "k3s_workers_group" {
+  name = "k3s-workers-target-group"
+
+  dynamic "target" {
+    for_each = yandex_compute_instance.k3s_workers
+    content {
+      # Используем твой синтаксис обращения к интерфейсу сети
+      subnet_id = target.value.network_interface[0].subnet_id
+      address   = target.value.network_interface[0].ip_address
+    }
+  }
+}
+
 resource "yandex_lb_network_load_balancer" "k3s_internal_lb" {
   name = "k3s-internal-network-load-balancer"
   type = "internal" # Делает балансировщик строго приватным внутри VPC
@@ -303,10 +362,19 @@ resource "yandex_lb_network_load_balancer" "k3s_internal_lb" {
     }
   }
 
-  # Блок attached_target_group полностью удален, чтобы не конфликтовать с мастерами.
-  # Мы добавим сюда новую таргет-группу воркеров на Шаге 2.
-}
+  attached_target_group {
+    target_group_id = yandex_lb_target_group.k3s_workers_group.id
 
+    # Используем правильное для Яндекса написание healthcheck
+    healthcheck {
+      name = "http-check"
+      http_options {
+        port = 80
+        path = "/"
+      }
+    }
+  }
+}
 
 # ==============================================================================
 # 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — С ЗАГЛУШКОЙ ДЛЯ ВОРКЕРОВ
