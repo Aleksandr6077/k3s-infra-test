@@ -20,7 +20,6 @@ jobs:
           fetch-depth: 0
 
       # 0. Линтинг YAML через Python
-       Alb-step для PyYAML...
       - name: Запуск Валидации YAML (PyYAML)
         run: |
           python3 -c "
