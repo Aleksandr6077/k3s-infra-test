@@ -64,13 +64,25 @@ up:
 	@echo "$(GREEN)====> Инфраструктура успешно обновлена! <====$(NC)"
 	@echo "$(YELLOW)Для деплоя K3s и сервисов запустите: make ansible-deploy$(NC)"
 
+## upgrade: Инициализация OpenTofu в оффлайн-режиме с валидным токеном Яндекса
+upgrade:
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu init -reconfigure
+	@echo "$(GREEN)====> Инициализация успешно завершена! <====$(NC)"
+
+
+list:
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu state list
+	@echo "$(GREEN)====> Инициализация успешно завершена! <====$(NC)"
+
+plan:
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu plan
+	@echo "$(GREEN)====> План конфигурации успешно построен! <====$(NC)"
+
 ## down: Полное уничтожение облачной инфраструктуры (OpenTofu Destroy)
 down:
 	@echo "$(RED)ВНИМАНИЕ! Это действие полностью уничтожит всю облачную инфраструктуру!$(NC)"
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu destroy -auto-approve
 	@echo "$(GREEN)====> Облачный стенд полностью уничтожен. <====$(NC)"
-
-
 
 ## recreate: Быстрое и безопасное пересоздание инфраструктуры (down + up)
 recreate:
@@ -81,6 +93,9 @@ help:
 	@echo "$(CYAN)Доступные команды:$(NC)"
 	@awk '/^[a-zA-===]/ {config=0} /^##/ {comment=$$0; config=1} /^[a-zA-Z_-]+:/ {if(config) {print "  $(GREEN)" $$1 "$(NC) " substr(comment, 4)}}' $(MAKEFILE_LIST) | column -t -s ':'
 
+apply:
+	@echo "$(RED)Делеаем apply...(lock false)$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu apply -lock=false
 
 
 

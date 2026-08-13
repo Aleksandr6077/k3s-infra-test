@@ -26,3 +26,4 @@ index.html
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+.yc-token

@@ -387,9 +387,8 @@ resource "local_file" "ansible_inventory" {
       # Передаем список объектов мастеров целиком для Jinja2-цикла
       k3s_masters = yandex_compute_instance.k3s_masters
       
-      # Временная заглушка: пустой список, чтобы шаблон не ругался на отсутствие переменной
-      # Как только будет ресурс воркеров, заменю на yandex_compute_instance.k3s_workers
-      k3s_workers = []
+      # Заменили заглушку [] на реальный ресурс воркер-нод
+      k3s_workers = yandex_compute_instance.k3s_workers
       
       # Безопасно вытаскиваем чистую строку IP-адреса из listener балансировщика API
       yandex_lb_ip = tolist(tolist(yandex_lb_network_load_balancer.k3s_lb.listener)[0].external_address_spec)[0].address
@@ -397,6 +396,7 @@ resource "local_file" "ansible_inventory" {
   )
   filename = "${path.module}/../ansible/hosts.ini"
 }
+
 
 
 
