@@ -5,7 +5,7 @@ terraform {
     region = "us-east-1"
     endpoint = "https://storage.yandexcloud.net"
 
-    dynamodb_endpoint = "https://docapi.serverless.yandexcloud.net/ru-central1/b1g820v8l43mp2cug27d/etnkp1cs6eto3cdq320u"
+    dynamodb_endpoint = "https://docapi.serverless.yandexcloud.net/ru-central1/b1g820v8l43mp2cug27d/etnaiqqu9b87uidn6nd7"
     dynamodb_table = "terraform-state-lock-db" 
 
     skip_region_validation      = true

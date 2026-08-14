@@ -64,9 +64,16 @@ up:
 	@echo "$(GREEN)====> Инфраструктура успешно обновлена! <====$(NC)"
 	@echo "$(YELLOW)Для деплоя K3s и сервисов запустите: make ansible-deploy$(NC)"
 
+## up: Развертывание или обеспечение базовой HA-инфраструктуры
+up2:
+	@echo "$(CYAN)====> Развертывание базовой HA-инфраструктуры в 1 поток... <====$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu apply -parallelism=1 -auto-approve -lock=false
+	@echo "$(GREEN)====> Инфраструктура успешно обновлена! <====$(NC)"
+	@echo "$(YELLOW)Для деплоя K3s и сервисов запустите: make ansible-deploy$(NC)"
+
 ## upgrade: Инициализация OpenTofu в оффлайн-режиме с валидным токеном Яндекса
 upgrade:
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu init -reconfigure
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu init -migrate-state
 	@echo "$(GREEN)====> Инициализация успешно завершена! <====$(NC)"
 
 
@@ -76,6 +83,10 @@ list:
 
 plan:
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu plan
+	@echo "$(GREEN)====> План конфигурации успешно построен! <====$(NC)"
+
+plan2:
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu plan -lock=false
 	@echo "$(GREEN)====> План конфигурации успешно построен! <====$(NC)"
 
 ## down: Полное уничтожение облачной инфраструктуры (OpenTofu Destroy)
@@ -97,7 +108,9 @@ apply:
 	@echo "$(RED)Делеаем apply...(lock false)$(NC)"
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu apply -lock=false
 
-
+deletedb:
+	@echo "$(RED)Сносим бд в папке терраформа$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu state rm yandex_ydb_database_serverless.tf_state_lock
 
 
 
