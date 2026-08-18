@@ -39,13 +39,10 @@
   kubernetes.core.helm_repository:
     name: "{{ item.name }}"
     repo_url: "{{ item.url }}"
+    force_update: true # <--- Вставляем сюда. Ansible сам обновит кэш для grafana и prometheus
   loop:
     - { name: 'grafana', url: 'https://grafana.github.io/helm-charts' }
     - { name: 'prometheus-community', url: 'https://prometheus-community.github.io/helm-charts' }
-
-- name: Обновляем локальный кэш Helm-репозиториев
-  ansible.builtin.command: helm repo update
-  changed_when: false
 
 - name: Устанавливаем Grafana Loki (Сбор логов)
   kubernetes.core.helm:
