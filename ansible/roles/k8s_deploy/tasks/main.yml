@@ -83,8 +83,9 @@
     kubeconfig: "{{ playbook_dir }}/.kube/config"
     context: default
     state: present
-    namespace: default
-    src: "{{ app_manifest }}"
+    # Вместо одного файла указываем путь к нашей новой директории с манифестами
+    src: "{{ playbook_dir }}/k8s/apps/nginx/"
+
 
 
 
