@@ -6,12 +6,12 @@ metadata:
   labels:
     app: my-nginx
 spec:
-  replicas: 2 # Защита от Downtime. Всегда минимум 2 реплики в проме
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1       # Создавать 1 новый под перед удалением старого
-      maxUnavailable: 0 # 100% доступность во время деплоя
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: my-nginx
@@ -20,25 +20,26 @@ spec:
       labels:
         app: my-nginx
     spec:
-      # Запрещаем планировать обе реплики на одну ноду, если их в кластере несколько
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                    - key: app
-                      operator: In
-                      values:
-                        - my-nginx
-                topologyKey: "kubernetes.io/hostname"
+          # НАДЕЖНОСТЬ: Изменено на жесткое правило. Поды ОБЯЗАНЫ разворачиваться на разных нодах.
+          # Если одна нода упадет, вторая продолжит держать 100% трафика без деградации до SPOF.
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - my-nginx
+              topologyKey: "kubernetes.io/hostname"
 
-      # БЕЗОПАСНОСТЬ: Запрещаем root на уровне всего Пода
+      # БЕЗОПАСНОСТЬ: Изоляция на уровне пода
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101 # ID пользователя nginx в unprivileged образах
+        runAsUser: 101
         fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault # Защита от системных вызовов мимо рантайма кубера
 
       initContainers:
       - name: init-html
@@ -48,17 +49,26 @@ spec:
           - '-c'
           - 'echo "<h1>Hello from k3s inside WSL2! DevOps is working!</h1>" > /data/index.html && chown -R 101:101 /data'
         securityContext:
-          runAsUser: 0 # Роут нужен только init-контейнеру для chown прав доступа
+          runAsUser: 0 # Root нужен только для chown на внешнем томе
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true # Запрет на мутацию самого образа alpine
+          capabilities:
+            drop:
+              - ALL # Полный сброс прав Linux ядра
+            add:
+              - CHOWN   # Разрешаем только смену владельца файлов
+              - FOWNER  # Разрешаем управлять правами без сверки с UID владельца
         volumeMounts:
         - name: nginx-storage
           mountPath: /data
+        - name: ephemeral-tmp
+          mountPath: /tmp
 
       containers:
       - name: nginx
-        # ИСПОЛЬЗУЕМ: Специальный non-root enterprise образ от авторов Nginx
         image: nginxinc/nginx-unprivileged:1.25-alpine
         ports:
-        - containerPort: 8080 # Внимание! Non-root процессы слушают порты > 1024 (дефолт 8080)
+        - containerPort: 8080
           name: http
         resources:
           requests:
@@ -66,22 +76,26 @@ spec:
             cpu: "50m"
           limits:
             memory: "64Mi"
-            cpu: "200m" # Увеличили лимит по CPU до 200m, 100m на проде будет душить аппликейшн (Throttling)
+            cpu: "200m"
 
-        # SRE: Graceful Shutdown механика
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true   # Корень контейнера полностью заблокирован на запись
+          capabilities:
+            drop:
+              - ALL # Чистый non-privileged процесс без системных капабилити
+
         lifecycle:
           preStop:
             exec:
-              command: ["/bin/sh", "-c", "sleep 10 && nginx -s quit"] 
-              # Поток спит 10 сек, давая Traefik время исключить под из балансировки,
-              # после чего Nginx мягко дорабатывает текущие сессии и завершается.
+              command: ["/bin/sh", "-c", "sleep 10 && nginx -s quit"] # Graceful shutdown для очистки сессий в Traefik
 
-        # ИСПРАВЛЕННЫЕ ПРОБЫ (на порт 8080)
+        # ОПТИМИЗАЦИЯ: Ускорен запуск первой проверки. Легковесный Nginx готов принимать трафик сразу.
         readinessProbe:
           httpGet:
             path: /index.html
             port: 8080
-          initialDelaySeconds: 3
+          initialDelaySeconds: 1 
           periodSeconds: 5
           timeoutSeconds: 2
           failureThreshold: 3
@@ -89,15 +103,37 @@ spec:
           httpGet:
             path: /index.html
             port: 8080
-          initialDelaySeconds: 10
+          initialDelaySeconds: 5 
           periodSeconds: 10
           timeoutSeconds: 2
           failureThreshold: 3
+        
         volumeMounts:
         - name: nginx-storage
           mountPath: /usr/share/nginx/html
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+        # ИСПРАВЛЕНИЕ: Мапим /var/tmp в emptyDir. Сюда Nginx сбрасывает буфер больших POST-запросов.
+        - name: ephemeral-tmp
+          mountPath: /var/tmp
+        - name: ephemeral-tmp
+          mountPath: /tmp
 
       volumes:
       - name: nginx-storage
         persistentVolumeClaim:
           claimName: nginx-pvc
+      # Все временные директории монтируются как emptyDir (в RAM-диск), чтобы не писать на readOnlyRootFilesystem
+      - name: nginx-cache
+        emptyDir:
+          medium: Memory
+      - name: nginx-run
+        emptyDir:
+          medium: Memory
+      - name: ephemeral-tmp
+        emptyDir:
+          medium: Memory
+
+
