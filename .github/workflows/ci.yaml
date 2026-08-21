@@ -2,11 +2,9 @@ name: Ci
 
 on:
   push:
-    branches:
-      - master
+    branches: [ "master" ]
   pull_request:
-    branches: 
-      - master
+    branches: [ "master" ]
   workflow_dispatch:
 
 jobs:
@@ -17,78 +15,49 @@ jobs:
       - name: Клонируем репозиторий проекта
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Необходимо для корректной работы Gitleaks истории
 
-      # 0. Линтинг YAML через Python
-      - name: Запуск Валидации YAML (PyYAML)
-        run: |
-          python3 -c "
-          import os, sys
-          try:
-              import yaml
-          except ImportError:
-              os.system('pip3 install pyyaml --break-system-packages')
-              import yaml
-
-          has_errors = False
-          print('Начало проверки YAML файлов...')
-          for root, dirs, files in os.walk('.'):
-              if any(part.startswith('.') for part in root.split(os.sep)):
-                  continue
-              for file in files:
-                  if file.endswith(('.yaml', '.yml')):
-                      file_path = os.path.join(root, file)
-                      try:
-                          with open(file_path, 'r', encoding='utf-8') as f:
-                              list(yaml.safe_load_all(f))
-                          print(f'✅ {file_path} - ОК')
-                      except Exception as e:
-                          print(f'❌ Ошибка синтаксиса в {file_path}:\n{e}')
-                          has_errors = True
-          if has_errors:
-              sys.exit(1)
-          print('Все YAML файлы успешно прошли проверку.')
-          "
-          
-      # 1. GitLeaks — ИСПРАВЛЕНО: Ставим Go, клонируем и собираем из исходников на лету
-      # Используем официальный экшен для установки Go окружения
-      - name: Установка Go (Golang)
-        uses: actions/setup-go@v5
+      # 1. Быстрая валидация синтаксиса YAML (через встроенный инструмент)
+      - name: Запуск Валидации YAML
+        uses: ibiqlik/action-yamllint@v3
         with:
-          go-version: '1.22' # Актуальная и стабильная версия для сборки gitleaks
+          file_or_dir: .
+          config_file: .yamllint.yml # если нет, проверит базовый синтаксис
+        continue-on-error: false
 
-      - name: Сборка и запуск GitLeaks из исходников
+      # 2. Сканирование секретов через официальный Docker-образ Gitleaks
+      - name: Запуск GitLeaks (Поиск секретов)
         run: |
-          echo "→ Клонируем исходный код GitLeaks..."
-          git clone --depth 1 https://github.com/gitleaks/gitleaks.git /tmp/gitleaks-src
-          
-          echo "→ Компилируем бинарник..."
-          cd /tmp/gitleaks-src
-          go build -o /tmp/gitleaks main.go
-          
-          echo "→ Возвращаемся в рабочую директорию и запускаем сканирование секретов..."
-          cd ${{ github.workspace }}
-          /tmp/gitleaks detect --source=. --verbose --redact
+          docker run --rm -v ${{ github.workspace }}:/path zricethezav/gitleaks:latest detect --source=/path --verbose --redact
 
-      # 2. Trivy — ЗАГЛУШКА
+      # 3. запуск Trivy
       - name: Запуск Trivy Config Scan
-        run: |
-          echo "→ Trivy: ЗАГЛУШКА"
-          echo "✅ Trivy config scan passed (stub)"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          hide-progress: true
+          exit-code: '1' # Уронить пайплайн, если найдены критические уязвимости
+          severity: 'CRITICAL,HIGH'
 
-      # 3. Kube-score — ЗАГЛУШКА
-      - name: Запуск Kube-score (Линтер манифестов)
+      # 4. Реальный запуск Kube-score (Линтер манифестов на соответствие Best Practices)
+      - name: Запуск Kube-score
         run: |
-          echo "→ Kube-score: ЗАГЛУШКА"
-          echo "✅ Kube-score passed (stub)"
+          # Скачиваем pre-compiled бинарник kube-score
+          curl -sLO https://github.com/zegl/kube-score/releases/download/v1.20.0/kube-score_1.20.0_linux_amd64
+          tar -xf kube-score_1.18.0_linux_amd64.tar.gz
+          
+          echo "→ Запуск анализа новой структуры каталогов приложения..."
+          ./kube-score score k8s/apps/nginx/*.yaml
 
-      # 3.5. Kubernetes Dry-Run — ЗАГЛУШКА
-      - name: Запуск Kubernetes Dry-Run (Валидация на кластере)
+      # 5. Реальный Kubernetes Dry-Run (Валидация манифестов без живого облака)
+      - name: Запуск Kubernetes Dry-Run (Валидация схемы через kubeval/kubectl)
         run: |
-          echo "→ K8s Dry-Run: ЗАГЛУШКА"
-          echo "✅ Kubernetes dry-run passed (stub)"
+          # Используем встроенный в runner kubectl + локальный мини-кластер (мимикрия)
+          # Или проверяем соответствие схемы через dry-run в режиме клиента
+          echo "→ Проверка клиентской валидации манифестов..."
+          kubectl apply --dry-run=client -f k8s/apps/nginx/
 
-      # 4. Уведомление в Telegram при УСПЕШНОМ прохождении
+      # 6. Уведомление в Telegram при УСПЕШНОМ прохождении
       - name: Уведомление в Telegram (Успех)
         if: success()
         env:
@@ -99,9 +68,9 @@ jobs:
           curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d parse_mode="HTML" \
-            -d text="✅ <b>Пайплайн k3s-infra-test</b> успешно пройден!%0A<b>Коммит:</b> ${COMMIT_MSG}"
+            -d text="✅ <b>Пайплайн k3s-infra-test успешно пройден!</b>%0A<b>Коммит:</b> ${COMMIT_MSG}"
 
-      # 5. Уведомление в Telegram при ПАДЕНИИ
+      # 7. Уведомление в Telegram при ПАДЕНИИ
       - name: Уведомление в Telegram (Ошибка)
         if: failure()
         env:
@@ -111,7 +80,8 @@ jobs:
           curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d parse_mode="HTML" \
-            -d text="❌ <b>Пайплайн k3s-infra-test</b> завален!%0AПроверьте логи сборки безопасности в GitVerse.%0A<b>Автор коммита:</b> ${{ github.actor }}"
+            -d text="❌ <b>Пайплайн завален!</b>%0AПроверьте логи сборки безопасности.%0A<b>Автор коммита:</b> ${{ github.actor }}"
+
 
 
 
