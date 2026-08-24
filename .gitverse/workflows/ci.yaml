@@ -1,117 +1,79 @@
-name: Ci
+name: DevSecOps Infrastructure Pipeline
 
 on:
   push:
-    branches:
-      - master
+    branches: [ master ]
   pull_request:
-    branches: 
-      - master
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
-  devsecops_pipeline:
+  validate_and_scan:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Клонируем репозиторий проекта
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 0. Линтинг YAML через Python
-      - name: Запуск Валидации YAML (PyYAML)
-        run: |
-          python3 -c "
-          import os, sys
-          try:
-              import yaml
-          except ImportError:
-              os.system('pip3 install pyyaml --break-system-packages')
-              import yaml
-
-          has_errors = False
-          print('Начало проверки YAML файлов...')
-          for root, dirs, files in os.walk('.'):
-              if any(part.startswith('.') for part in root.split(os.sep)):
-                  continue
-              for file in files:
-                  if file.endswith(('.yaml', '.yml')):
-                      file_path = os.path.join(root, file)
-                      try:
-                          with open(file_path, 'r', encoding='utf-8') as f:
-                              list(yaml.safe_load_all(f))
-                          print(f'✅ {file_path} - ОК')
-                      except Exception as e:
-                          print(f'❌ Ошибка синтаксиса в {file_path}:\n{e}')
-                          has_errors = True
-          if has_errors:
-              sys.exit(1)
-          print('Все YAML файлы успешно прошли проверку.')
-          "
-          
-      # 1. GitLeaks — ИСПРАВЛЕНО: Ставим Go, клонируем и собираем из исходников на лету
-      # Используем официальный экшен для установки Go окружения
-      - name: Установка Go (Golang)
-        uses: actions/setup-go@v5
+      # 1. Быстрая валидация YAML синтаксиса через готовый экшен (без простыни Python-кода)
+      - name: Validate YAML Syntax
+        uses: ibiqlik/action-yamllint@v3
         with:
-          go-version: '1.22' # Актуальная и стабильная версия для сборки gitleaks
+          file_or_dir: '.'
+          config_data: "{extends: relaxed, rules: {line-length: disable}}"
 
-      - name: Сборка и запуск GitLeaks из исходников
+      # 2. Сканирование секретов через официальный легковесный экшен GitLeaks (без go build!)
+      - name: Run GitLeaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # 3. Реальный запуск Trivy для сканирования на уязвимости
+      - name: Run Trivy Vulnerability Scanner (IaC)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          hide-progress: false
+          format: 'table'
+          exit-code: '1' # Упасть, если найдены критические уязвимости
+          ignore-unfixed: true
+
+      # 4. Реальный запуск Kube-score для анализа манифестов k8s на Best Practices
+      - name: Run Kube-score Linting
         run: |
-          echo "→ Клонируем исходный код GitLeaks..."
-          git clone --depth 1 https://github.com/gitleaks/gitleaks.git /tmp/gitleaks-src
+          echo "→ Скачиваем kube-score..."
+          curl -sLO https://github.com/zegl/kube-score/releases/download/v1.18.0/kube-score_1.18.0_linux_amd64.tar.gz
+          tar -xzf kube-score_1.18.0_linux_amd64.tar.gz
           
-          echo "→ Компилируем бинарник..."
-          cd /tmp/gitleaks-src
-          go build -o /tmp/gitleaks main.go
-          
-          echo "→ Возвращаемся в рабочую директорию и запускаем сканирование секретов..."
-          cd ${{ github.workspace }}
-          /tmp/gitleaks detect --source=. --verbose --redact
+          echo "→ Анализируем манифесты в k8s/apps/..."
+          ./kube-score score k8s/apps/nginx/*.yaml --ignore-container-cpu-limit
 
-      # 2. Trivy — ЗАГЛУШКА
-      - name: Запуск Trivy Config Scan
-        run: |
-          echo "→ Trivy: ЗАГЛУШКА"
-          echo "✅ Trivy config scan passed (stub)"
-
-      # 3. Kube-score — ЗАГЛУШКА
-      - name: Запуск Kube-score (Линтер манифестов)
-        run: |
-          echo "→ Kube-score: ЗАГЛУШКА"
-          echo "✅ Kube-score passed (stub)"
-
-      # 3.5. Kubernetes Dry-Run — ЗАГЛУШКА
-      - name: Запуск Kubernetes Dry-Run (Валидация на кластере)
-        run: |
-          echo "→ K8s Dry-Run: ЗАГЛУШКА"
-          echo "✅ Kubernetes dry-run passed (stub)"
-
-      # 4. Уведомление в Telegram при УСПЕШНОМ прохождении
-      - name: Уведомление в Telegram (Успех)
+      # 5. Исправленное уведомление в Telegram при УСПЕХЕ
+      - name: Telegram Notification (Success)
         if: success()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s" || echo "Не удалось определить коммит")
-          curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d parse_mode="HTML" \
-            -d text="✅ <b>Пайплайн k3s-infra-test</b> успешно пройден!%0A<b>Коммит:</b> ${COMMIT_MSG}"
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s" || echo "New commit")
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          -d chat_id="${TELEGRAM_CHAT_ID}" \
+          -d parse_mode="HTML" \
+          -d text="✅ <b>Пайплайн k3s-infra-test успешно пройден!</b>%0A<b>Коммит:</b> ${COMMIT_MSG}%0A<b>Автор:</b> ${{ github.actor }}"
 
-      # 5. Уведомление в Telegram при ПАДЕНИИ
-      - name: Уведомление в Telegram (Ошибка)
+      # 6. Исправленное уведомление в Telegram при ОШИБКЕ
+      - name: Telegram Notification (Failure)
         if: failure()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d parse_mode="HTML" \
-            -d text="❌ <b>Пайплайн k3s-infra-test</b> завален!%0AПроверьте логи сборки безопасности в GitVerse.%0A<b>Автор коммита:</b> ${{ github.actor }}"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          -d chat_id="${TELEGRAM_CHAT_ID}" \
+          -d parse_mode="HTML" \
+          -d text="❌ <b>Пайплайн k3s-infra-test ЗАВАЛЕН!</b>%0AПроверьте логи сборки безопасности.%0A<b>Автор коммита:</b> ${{ github.actor }}"
 
 
 

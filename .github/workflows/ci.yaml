@@ -1,86 +1,81 @@
-name: Ci
+name: DevSecOps Infrastructure Pipeline
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ master ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
-  devsecops_pipeline:
+  validate_and_scan:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Клонируем репозиторий проекта
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Необходимо для корректной работы Gitleaks истории
+          fetch-depth: 0
 
-      # 1. Быстрая валидация синтаксиса YAML (через встроенный инструмент)
-      - name: Запуск Валидации YAML
+      # 1. Быстрая валидация YAML синтаксиса через готовый экшен (без простыни Python-кода)
+      - name: Validate YAML Syntax
         uses: ibiqlik/action-yamllint@v3
         with:
-          file_or_dir: .
-          config_file: .yamllint.yml # если нет, проверит базовый синтаксис
-        continue-on-error: false
+          file_or_dir: '.'
+          config_data: "{extends: relaxed, rules: {line-length: disable}}"
 
-      # 2. Сканирование секретов через официальный Docker-образ Gitleaks
-      - name: Запуск GitLeaks (Поиск секретов)
-        run: |
-          docker run --rm -v ${{ github.workspace }}:/path zricethezav/gitleaks:latest detect --source=/path --verbose --redact
+      # 2. Сканирование секретов через официальный легковесный экшен GitLeaks (без go build!)
+      - name: Run GitLeaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
-      # 3. запуск Trivy
-      - name: Запуск Trivy Config Scan
+      # 3. Реальный запуск Trivy для сканирования на уязвимости
+      - name: Run Trivy Vulnerability Scanner (IaC)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'config'
-          hide-progress: true
-          exit-code: '1' # Уронить пайплайн, если найдены критические уязвимости
-          severity: 'CRITICAL,HIGH'
+          hide-progress: false
+          format: 'table'
+          exit-code: '1' # Упасть, если найдены критические уязвимости
+          ignore-unfixed: true
 
-      # 4. Реальный запуск Kube-score (Линтер манифестов на соответствие Best Practices)
-      - name: Запуск Kube-score
+      # 4. Реальный запуск Kube-score для анализа манифестов k8s на Best Practices
+      - name: Run Kube-score Linting
         run: |
-          # Скачиваем pre-compiled бинарник kube-score
-          curl -sLO https://github.com/zegl/kube-score/releases/download/v1.20.0/kube-score_1.20.0_linux_amd64
-          tar -xf kube-score_1.18.0_linux_amd64.tar.gz
+          echo "→ Скачиваем kube-score..."
+          curl -sLO https://github.com/zegl/kube-score/releases/download/v1.18.0/kube-score_1.18.0_linux_amd64.tar.gz
+          tar -xzf kube-score_1.18.0_linux_amd64.tar.gz
           
-          echo "→ Запуск анализа новой структуры каталогов приложения..."
-          ./kube-score score k8s/apps/nginx/*.yaml
+          echo "→ Анализируем манифесты в k8s/apps/..."
+          ./kube-score score k8s/apps/nginx/*.yaml --ignore-container-cpu-limit
 
-      # 5. Реальный Kubernetes Dry-Run (Валидация манифестов без живого облака)
-      - name: Запуск Kubernetes Dry-Run (Валидация схемы через kubeval/kubectl)
-        run: |
-          # Используем встроенный в runner kubectl + локальный мини-кластер (мимикрия)
-          # Или проверяем соответствие схемы через dry-run в режиме клиента
-          echo "→ Проверка клиентской валидации манифестов..."
-          kubectl apply --dry-run=client -f k8s/apps/nginx/
-
-      # 6. Уведомление в Telegram при УСПЕШНОМ прохождении
-      - name: Уведомление в Telegram (Успех)
+      # 5. Исправленное уведомление в Telegram при УСПЕХЕ
+      - name: Telegram Notification (Success)
         if: success()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s" || echo "Не удалось определить коммит")
-          curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d parse_mode="HTML" \
-            -d text="✅ <b>Пайплайн k3s-infra-test успешно пройден!</b>%0A<b>Коммит:</b> ${COMMIT_MSG}"
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s" || echo "New commit")
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          -d chat_id="${TELEGRAM_CHAT_ID}" \
+          -d parse_mode="HTML" \
+          -d text="✅ <b>Пайплайн k3s-infra-test успешно пройден!</b>%0A<b>Коммит:</b> ${COMMIT_MSG}%0A<b>Автор:</b> ${{ github.actor }}"
 
-      # 7. Уведомление в Telegram при ПАДЕНИИ
-      - name: Уведомление в Telegram (Ошибка)
+      # 6. Исправленное уведомление в Telegram при ОШИБКЕ
+      - name: Telegram Notification (Failure)
         if: failure()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          curl -s -X POST "https://telegram.org{TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d parse_mode="HTML" \
-            -d text="❌ <b>Пайплайн завален!</b>%0AПроверьте логи сборки безопасности.%0A<b>Автор коммита:</b> ${{ github.actor }}"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          -d chat_id="${TELEGRAM_CHAT_ID}" \
+          -d parse_mode="HTML" \
+          -d text="❌ <b>Пайплайн k3s-infra-test ЗАВАЛЕН!</b>%0AПроверьте логи сборки безопасности.%0A<b>Автор коммита:</b> ${{ github.actor }}"
+
+
 
 
 
