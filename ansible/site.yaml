@@ -76,9 +76,9 @@
     - k3s_kubeconfig
 
 # ==============================================================================
-# ЭТАП 3: Деплой инфраструктуры мониторинга и приложений
+# ЭТАП 3: Развертывание GitOps-фундамента (ArgoCD через Helm)
 # ==============================================================================
-- name: Развертывание сервисов в Kubernetes
+- name: Подготовка GitOps-оператора в Kubernetes
   hosts: localhost
   gather_facts: false
   vars_files:
@@ -90,8 +90,37 @@
         path: "{{ playbook_dir }}/.kube/config"
         regexp: 'server: https://127.0.0.1:6443'
         replace: "server: https://{{ yandex_lb_ip }}:6443"
-  roles:
-    - k8s_deploy
+
+  tasks:
+    # 1. Добавляем официальный Helm-репозиторий Argo
+    - name: Добавить Helm-репозиторий ArgoCD
+      kubernetes.core.helm_repository:
+        name: argo
+        repo_url: "https://argoproj.github.io/argo-cd"
+
+    # 2. Ставим ArgoCD через Helm с учетом специфики его CRD
+    - name: Установить ArgoCD через Helm
+      kubernetes.core.helm:
+        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        release_name: argocd
+        chart_ref: argo/argo-cd
+        chart_version: "7.3.11" # Всегда фиксируй версию чарта на проде, чтобы деплой был предсказуем
+        release_namespace: argocd
+        create_namespace: true
+        server_side_apply: true # КРИТИЧНО: включает server-side apply для пролезания тяжелых CRD ArgoCD
+        values:
+          server:
+            # Настройка ingress/сервиса. Для локального WSL2/K3s лучше оставить ClusterIP 
+            # и ходить через Ingress (Traefik), который у тебя уже есть.
+            service:
+              type: ClusterIP
+
+    # 3. Деплоим наш манифест-мост, который свяжет Git и Кубер
+    - name: Деплой ArgoCD Application для Nginx
+      kubernetes.core.k8s:
+        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        state: present
+        src: "{{ playbook_dir }}/k8s/platform/argocd-apps/nginx-app.yaml"
 
 
 

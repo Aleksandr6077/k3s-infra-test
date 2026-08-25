@@ -1,9 +1,0 @@
----
-# Пути к манифестам, рассчитываемые динамически относительно корня проекта
-project_dir: "{{ playbook_dir }}/.."
-
-loki_values_path: "{{ project_dir }}/k8s/loki-values.yaml"
-mon_values_path: "{{ project_dir }}/k8s/mon-values.yaml"
-app_manifest: "{{ project_dir }}/k8s/app.yaml"
-
-

@@ -102,37 +102,39 @@
 
 ```text
 k3s-infra-test/
-├── .gitverse/.github
+├── .gitverse/.github/
 │   └── workflows/
-│       └── ci.yaml             # CI/CD пайплайн для автоматизации (GiHub/GitVerse)
+│       └── ci.yaml             # CI/CD пайплайн для автоматизации (GitHub/GitVerse)
 ├── ansible/
 │   ├── roles/
 │   │   ├── k3s_kubeconfig/     # Копирование и локальный импорт kubeconfig
-│   │   ├── k8s_deploy/         # Деплой манифестов/Helm-чартов в k3s
-│   │   └── local_env/          # Local Management Host Setup
-│   ├── hosts.ini               # инвентарь (генерируется автоматически в момент поднятия стэнда)
-│   └── site.yaml               # Главный плейбук, запускающий все роли
-k8s/
-├── apps/
-│   └── nginx/
-│       ├── pvc.yaml          # Слой хранения данных (PersistentVolumeClaim)
-│       ├── deployment.yaml   # Слой вычислений, рантайма и рантайм-безопасности
-│       ├── service.yaml      # Слой внутренней абстракции сети
-│       └── ingress.yaml      # Слой входной маршрутизации трафика
-├── loki-values.yaml          # Кастомные параметры для Helm-чарта Grafana Loki
-└── mon-values.yaml           # Настройки конфигурации Helm-чарта Prometheus Operator
+│   │   └── local_env/          # Настройка локального окружения разработчика
+│   ├── hosts.ini               # Инвентарь (автогенерация при поднятии стенда)
+│   └── site.yaml               # Главный плейбук (Provisioning, K3s и Helm-деплой ArgoCD)
+├── k8s/
+│   ├── apps/
+│   │   └── nginx/
+│   │       ├── pvc.yaml        # Слой хранения данных (PersistentVolumeClaim)
+│   │       ├── deployment.yaml # Слой вычислений, лимитов и рантайм-безопасности
+│   │       ├── service.yaml    # Слой внутренней сети кластера (ClusterIP)
+│   │       └── ingress.yaml    # Слой входной маршрутизации трафика (Traefik)
+│   ├── platform/
+│   │   └── argocd-apps/
+│   │       └── nginx-app.yaml  # Манифест ArgoCD Application (GitOps-мост)
+│   ├── loki-values.yaml        # Настройки для Helm-чарта Grafana Loki
+│   └── mon-values.yaml         # Настройки для Helm-чарта Prometheus Operator
 ├── terraform/                  # Инфраструктура как код (IaC) для Яндекс Облака
 │   ├── hosts.ini.tpl           # Шаблон для автогенерации инвентаря Ansible
-│   ├── main.tf                 # Описание VPC, подсетей, Security Groups и инстансов Compute Cloud
+│   ├── main.tf                 # Описание VPC, подсетей, Security Groups и ВМ
 │   ├── outputs.tf              # Вывод публичных IP-адресов созданных машин
-│   ├── providers.tf            # Настройка провайдера Яндекса с авторизацией и зеркалом РФ
-│   └── variables.tf            # Объявление переменных для IAM-токенов облака
-├── .pre-commit-config.yaml     # Локальные проверки (ansible-lint, tflint, trivy)
-├── CHANGELOG.md                # История изменений проекта (включая миграцию в облако)
-├── index.html                  # Заглушка для проверки (создается init подом)
+│   ├── providers.tf            # Настройка провайдера Яндекса и зеркала РФ
+│   └── variables.tf            # Объявление переменных кластера
+├── .pre-commit-config.yaml     # Локальные хуки проверок (trivy etc.)
+├── CHANGELOG.md                # История изменений проекта
 ├── LICENSE                     # Лицензия проекта
-├── Makefile                    # Алиасы для быстрых команд (make up, make down)
-└── README.md                   # Документация
+├── Makefile                    # Скрипты автоматизации команд (make up, make down)
+└── README.md                   # Документация проекта
+
 
 ```
 
