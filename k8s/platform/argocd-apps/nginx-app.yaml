@@ -12,10 +12,10 @@ spec:
     targetRevision: HEAD # Следим за главной веткой (можно указать конкретную ветку или тег)
     path: k8s/apps/nginx # СТРОГО указываем папку. На изменения в Ansible-папках ArgoCD реагировать НЕ БУДЕТ
 
-  # 2. Реальное состояние
+    # 2. Реальное состояние
   destination:
-    server: 'https://default.svc' # Деплоим внутрь этого же кластера, где стоит ArgoCD
-    namespace: default # Целевой namespace для твоего Nginx
+    server: 'https://kubernetes.default.svc' # <-- ИСПРАВЛЕНО (добавили kubernetes)
+    namespace: default
 
   # 3. ПОЛИТИКА СИНХРОНИЗАЦИИ (Автоматизация)
   syncPolicy:

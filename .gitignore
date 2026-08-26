@@ -2,6 +2,7 @@ sa_key.json
 .ansible_vault_pass.txt
 local-infra/haproxy/keepalived.conf
 ansible/hosts.ini
+ansible/.kube/
 # Игнорируем стейт-файлы инфраструктуры
 *.tfstate
 *.tfstate.backup

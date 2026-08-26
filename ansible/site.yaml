@@ -15,8 +15,20 @@
 - name: Развертывание высокодоступного кластера K3s в Облаке
   hosts: k3s_masters
   become: true
-  gather_facts: true
+  gather_facts: false
   tasks:
+
+    - name: "SRE-Guard: Ожидаем полной готовности SSH-демона в ОС"
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host | default(inventory_hostname) }}"
+        port: 22
+        state: started
+        delay: 5
+        timeout: 120
+
+    - name: Включение сбора фактов после успешного подключения
+      ansible.builtin.setup:
+
     - name: Инициализация первого мастера K3s (Кластер-инит без хардкода токена)
       ansible.builtin.shell:
         cmd: >
@@ -43,6 +55,7 @@
     - name: Расшаривание токена на все хосты в памяти Ansible
       ansible.builtin.set_fact:
         k3s_cluster_token: "{{ hostvars[groups['k3s_masters'][0]]['k3s_node_token_encoded']['content'] | b64decode | trim }}"
+      when: hostvars[groups['k3s_masters'][0]]['k3s_node_token_encoded'] is defined
       run_once: true
 
     - name: Ожидание запуска Kubernetes API на первом мастере
@@ -76,7 +89,7 @@
     - k3s_kubeconfig
 
 # ==============================================================================
-# ЭТАП 3: Развертывание GitOps-фундамента (ArgoCD через Helm)
+# ЭТАП 3: Развертывание GitOps-фундамента (Автоматизированный Manifest-деплой)
 # ==============================================================================
 - name: Подготовка GitOps-оператора в Kubernetes
   hosts: localhost
@@ -92,35 +105,40 @@
         replace: "server: https://{{ yandex_lb_ip }}:6443"
 
   tasks:
-    # 1. Добавляем официальный Helm-репозиторий Argo
-    - name: Добавить Helm-репозиторий ArgoCD
-      kubernetes.core.helm_repository:
-        name: argo
-        repo_url: "https://argoproj.github.io/argo-cd"
-
-    # 2. Ставим ArgoCD через Helm с учетом специфики его CRD
-    - name: Установить ArgoCD через Helm
-      kubernetes.core.helm:
+    # 1. Создаем namespace, чтобы ArgoCD было куда вставать
+    - name: Создание пространства имен для ArgoCD
+      kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/.kube/config"
-        release_name: argocd
-        chart_ref: argo/argo-cd
-        chart_version: "7.3.11" # Всегда фиксируй версию чарта на проде, чтобы деплой был предсказуем
-        release_namespace: argocd
-        create_namespace: true
-        server_side_apply: true # КРИТИЧНО: включает server-side apply для пролезания тяжелых CRD ArgoCD
-        values:
-          server:
-            # Настройка ingress/сервиса. Для локального WSL2/K3s лучше оставить ClusterIP 
-            # и ходить через Ingress (Traefik), который у тебя уже есть.
-            service:
-              type: ClusterIP
+        name: argocd
+        api_version: v1
+        kind: Namespace
+        state: present
 
-    # 3. Деплоим наш манифест-мост, который свяжет Git и Кубер
+    # 2. Накатываем манифест твоей версии v3.5.1 с обходом лимита CRD
+    - name: Установка ArgoCD из официального манифеста (v3.5.1)
+      kubernetes.core.k8s:
+        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        state: present
+        src: "https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.1/manifests/install.yaml"
+        namespace: argocd
+        apply: true # Включает режим kubectl apply вместо декларативного replace
+        server_side_apply:
+          field_manager: ansible # Передаем словарь вместо bool для защиты от бага Python
+
+    # 3. Даем кластеру 15 секунд, чтобы контроллеры ArgoCD зарегистрировали свои типы данных
+    - name: Ожидание стабилизации API-схем ArgoCD
+      ansible.builtin.pause:
+        seconds: 15
+
+    # 4. Ansible деплоит единственный манифест-мост
     - name: Деплой ArgoCD Application для Nginx
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/.kube/config"
         state: present
-        src: "{{ playbook_dir }}/k8s/platform/argocd-apps/nginx-app.yaml"
+        # ИСПРАВЛЕНО: добавили /.. чтобы выйти из папки ansible в корень проекта
+        src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/nginx-app.yaml"
+
+
 
 
 
