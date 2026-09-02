@@ -3,24 +3,26 @@ kind: Application
 metadata:
   name: nginx-gitops-app
   namespace: argocd # Манифест деплоится в namespace, где живет сам ArgoCD
+  annotations:
+    argocd.argoproj.io/manifest-generate-paths: k8s/apps/nginx
 spec:
   project: default # Логическая группировка внутри ArgoCD
   
   # 1. Желаемое состояние
   source:
-    repoURL: 'https://github.com/Aleksandr6077/k3s-infra-test' # Ссылка на твой монорепозиторий
-    targetRevision: HEAD # Следим за главной веткой (можно указать конкретную ветку или тег)
-    path: k8s/apps/nginx # СТРОГО указываем папку. На изменения в Ansible-папках ArgoCD реагировать НЕ БУДЕТ
+    repoURL: 'https://github.com/Aleksandr6077/k3s-infra-test' # Ссылка на монорепозиторий
+    targetRevision: HEAD # Следим за главной веткой
+    path: k8s/apps/nginx # СТРОГО указываем папку. На изменения в Ansible-папках ArgoCD реагировать НЕ БУДЕТ, но! он все равно будет выкачить ВЕСЬ репоз. Исправляем(аннотации)
 
     # 2. Реальное состояние
   destination:
-    server: 'https://kubernetes.default.svc' # <-- ИСПРАВЛЕНО (добавили kubernetes)
+    server: 'https://kubernetes.default.svc'
     namespace: default
 
   # 3. ПОЛИТИКА СИНХРОНИЗАЦИИ (Автоматизация)
   syncPolicy:
     automated:
-      prune: true    # Если удалишь файл pvc.yaml из Git, ArgoCD сам удалит PVC из кластера
+      prune: true    # Если удалить pvc.yaml из Git, ArgoCD сам удалит PVC из кластера
       selfHeal: true # Если кто-то руками изменит манифест в кластере, ArgoCD вернет всё как в Git
     syncOptions:
       - CreateNamespace=true # Если целевого namespace нет, ArgoCD создаст его сам
