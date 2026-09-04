@@ -161,7 +161,7 @@ resource "yandex_compute_instance" "k3s_masters" {
   zone        = "ru-central1-a"
   platform_id = "standard-v3"
 
-  # Метки для динамического инвентаря Ansible
+  # Метки для инвентаря Ansible
   labels = {
     repo       = "k3s-infra-test"
     role       = "k3s-master"

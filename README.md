@@ -208,32 +208,30 @@ k3s-infra-test/
 
 ---
 
-## 🔍 Verification & Troubleshooting
+## 🔍 Верификация и устранение неполадок
 
-*   **Local Ingress Validation (L7)**: To validate the Ingress resources without modifying the system DNS or local `hosts` file, a local HTTP request was executed via `curl` with a forced `Host` header. This verified the correctness of Traefik routing independently:
+*   **Локальная проверка Ingress (L7)**: Чтобы проверить ресурсы Ingress без изменения системного DNS или локального файла hosts, был выполнен локальный HTTP-запрос через curl с принудительной установкой заголовка Host.
     ```bash
     curl -H "Host: my-app.local" http://127.0.0.1:80
     ```
 
-*   **Secure Access to Monitoring (Grafana)**: To access the Grafana web interface securely without exposing the monitoring stack to the public internet, port forwarding was configured directly to the cluster service:
+*   **Безопасный доступ к мониторингу (Grafana)**: Чтобы безопасно открыть веб-интерфейс Grafana и не подвергать стек мониторинга рискам из публичного интернета, было настроено перенаправление портов (port forwarding) напрямую на сервис кластера:
     ```bash
     kubectl port-forward -n monitoring svc/kube-prom-grafana 8080:80
     ```
-    Once the tunnel is active, the Grafana dashboards and logs are accessible locally at `http://localhost:8080`.
+    После запуска туннеля дашборды и логи Grafana становятся доступны локально по адресу `http://localhost:8080`.
 
-   ```
-3. Проверь логи HAProxy или сделай запрос к API (`k get nodes`). Кластер продолжит отвечать без прерывания сессии, так как балансировщик перенаправит трафик на оставшиеся 2 ноды, удерживающие кворум.
 
 ## 🎯 Что нужно доработать до уровня Production (Технический долг)
 Данный проект — это локальный self - hosted для обкатки стека в изолированной среде. Для деплоя в реальный продакшен необходимо закрыть следующие задачи:
 
 Main goals:
 - [✅ ] ~~**Внедрить полноценный GitOps-подход**: Установить в кластер ArgoCD для декларативного деплоя и синхронизации состояния кластера с GitHub | GitVetse.~~
-- [ ] **Persistent Storage**: Настройка постоянного хранения данных для логов и метрик(например `Longhorn`)
-- [ ] **Стек Мониторинга**: Добавить установку агента `Promtail`(либо `Alloy`) и сделать адаптацию values-файлов под Prometheus, Loki и Node Exporter в условиях распределенного HA-кластера.
-- [ ] **Секреты**: Внедрение Mozilla SOPS или HashiCorp Vault
+- [  ] **Persistent Storage**: Настройка постоянного хранения данных для логов и метрик(например `Longhorn`)
+- [  ] **Стек Мониторинга**: Добавить установку агента `Promtail`(либо `Alloy`) и сделать адаптацию values-файлов под Prometheus, Loki и Node Exporter в условиях распределенного HA-кластера.
+- [  ] **Секреты**: Внедрение Mozilla SOPS или HashiCorp Vault
 - [✅] ~~Убрать заглушки на этапе работы - раннера(Ci.yaml).~~
 - [✅] ~~Декомпозировать монолитный манифест app.yaml на отдельные сущности. Упаковать приложение в кастомный Helm-чарт для параметризации конфигураций под разные окружения (Dev/Stage/Prod).~~
-- [ ] Добавить 🔔 Уведомление -  отправка статуса сборки (Успех / Ошибка) в каналы связи.
-- [ ] Развернуть и настроить локальный DNS-сервер (CoreDNS или dnsmasq) с поддержкой Wildcard-записей (*.kube.local). Это позволит автоматизировать резолв доменов для новых микросервисов на машинах разработчиков и отказаться от ручной подмены HTTP-заголовков через curl.
-- [ ] Внедрение Longhorn или Rook-Ceph в качестве отказоустойчивого CSI-провайдера для обеспечения высокой доступности (HA) данных при миграции подов между нодами кластера.
+- [  ] Добавить 🔔 Уведомление -  отправка статуса сборки (Успех / Ошибка) в каналы связи.
+- [  ] Развернуть и настроить локальный DNS-сервер (CoreDNS или dnsmasq) с поддержкой Wildcard-записей (*.kube.local). Это позволит автоматизировать резолв доменов для новых микросервисов на машинах разработчиков и отказаться от ручной подмены HTTP-заголовков через curl.
+- [  ] Внедрение Longhorn или Rook-Ceph в качестве отказоустойчивого CSI-провайдера для обеспечения высокой доступности (HA) данных при миграции подов между нодами кластера.

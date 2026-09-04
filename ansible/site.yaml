@@ -34,7 +34,7 @@
         cmd: >
           curl -sfL https://get.k3s.io | sh -s - server 
           --cluster-init 
-          --tls-san={{ yandex_lb_ip }} 
+          --tls-san={{ yandex_lb_ip }}
           --node-ip={{ ansible_default_ipv4.address }}
         creates: /etc/rancher/k3s/k3s.yaml
       when: inventory_hostname == groups['k3s_masters'][0]
@@ -72,7 +72,7 @@
         cmd: >
           curl -sfL https://get.k3s.io | sh -s - server 
           --server https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443 
-          --tls-san={{ yandex_lb_ip }} 
+          --tls-san={{ yandex_lb_ip }}
           --node-ip={{ ansible_default_ipv4.address }}
           --token={{ k3s_cluster_token }}
         creates: /etc/rancher/k3s/k3s.yaml

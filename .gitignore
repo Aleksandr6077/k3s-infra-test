@@ -1,5 +1,6 @@
 sa_key.json
 .ansible_vault_pass.txt
+.kube
 local-infra/haproxy/keepalived.conf
 ansible/hosts.ini
 ansible/.kube/
@@ -27,4 +28,4 @@ index.html
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
-.yc-token
+.yc-token.kube/
