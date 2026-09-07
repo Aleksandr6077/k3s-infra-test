@@ -26,3 +26,4 @@ spec:
       selfHeal: true # Если кто-то руками изменит манифест в кластере, ArgoCD вернет всё как в Git
     syncOptions:
       - CreateNamespace=true # Если целевого namespace нет, ArgoCD создаст его сам
+      - Replace=true

@@ -48,7 +48,7 @@ spec:
         command: 
           - 'sh'
           - '-c'
-          - 'echo "<h1>Hello from k3s inside WSL2! DevOps is working!</h1>" > /data/index.html'
+          - 'echo "<h1>GitOps test: v3! ArgoCD sync works!</h1>" > /data/index.html'
         volumeMounts:
         - name: nginx-storage
           mountPath: /data

@@ -390,6 +390,20 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 -  Количество реплик Nginx уменьшено с 2 до 1 (для корректной работы с `ReadWriteOnce` и `PVC`).
 -  Включены политики автоматической синхронизации ArgoCD: `prune: true`, `selfHeal: true`.
 -  Настроен `revisionHistoryLimit: 1` для автоматической очистки старых ReplicaSet'ов.
+-  Добавлен Application `nginx-gitops-app` с автоматической синхронизацией
+- В `syncOptions` добавлен `Replace: true` — принудительное пересоздание ресурсов при изменении манифеста (для обновления подов без изменения spec)
+
+### Протестировано
+ - Проверена автоматическая синхронизация ArgoCD после коммита в master (текст обновляется без ручного вмешательства)
+ - Приложение my-nginx работает в default namespace, 1 под в статусе Running
+
+### *Known Issues / Next Steps*
+ - Для применения изменений в содержимом init-контейнера под требует ручного удаления (ArgoCD не пересоздаёт под автоматически, если не изменился spec).
+
+ - Рекомендуется добавить checksum конфига в аннотацию пода или использовать `Replace: true` на уровне Application (требует дальнейшей настройки).
+
+ - Старые ReplicaSet'ы удаляются не всегда(нужно фиксить)
+
 
 ## ‼️‼️Технический долг в рамках текущего этапа:
 
@@ -397,7 +411,7 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 2. ‼️ Полный переход с текстового файла `hosts.ini` на честный **Yandex Cloud Dynamic Inventory** через плагин `yc_compute`. (сейчас метод Terraform Push - он сам создает виртуалки и перезаписывает файл `hosts.ini`)
 3. ‼️ ~~Развертывание **ArgoCD** внутри кластера K3s~~
 4. ‼️ миграция деплоя манифестов мониторинга (Loki, Grafana, Prometheus) в `GitOps`-пайплайны
-5. ‼️ Тестирование GitOps-петли и синхронизации  ‼️‼️‼️‼️‼️
+5. ‼️ ~~Тестирование GitOps-петли и синхронизации  ‼️‼️‼️‼️‼️~~
 6. ‼️ ~~Добавим Worker-ноды, Развернем второй NLB для веб-трафика `(80/443)`~~ и Установим ArgoCD
 7. ‼️ ~~Лок стейта S3 для исключения дрифта при одновремнном tofu apply~~
 8. ‼️ ~~Yandex Database (Serverless) `ydb.tf` - добавить защиту от удаления~~
@@ -411,7 +425,7 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
  - Приложение `my-nginx` работает в `default` namespace, 1 под в статусе `Running`.
  - ArgoCD показывает статус `Synced` и `Healthy`.
  - скелет GitOps-пайплайна готов к использованию.
-
+ - Реализована GitOps-петля: ArgoCD отслеживает состояние манифестов в `k8s/apps/nginx/`
 ```
 NAME                        READY   STATUS    RESTARTS   AGE
 my-nginx-5ffdfbb6cc-4gm5w   1/1     Running   0          7m58s

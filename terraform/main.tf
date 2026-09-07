@@ -375,6 +375,14 @@ resource "yandex_lb_network_load_balancer" "k3s_internal_lb" {
 }
 
 # ==============================================================================
+# 5.2 Передаем IP-адрес балансировщика в файл(чтобы не было ошибки "Unhandled Error" err="couldn't get current server API group list)
+# ==============================================================================
+resource "local_file" "lb_ip" {
+  content  = "yandex_lb_ip: ${yandex_lb_network_load_balancer.k3s_lb.listener[0].external_address_spec[0].address}"
+  filename = "${path.module}/../ansible/group_vars/all/lb_ip.yml"
+}
+
+# ==============================================================================
 # 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — С ЗАГЛУШКОЙ ДЛЯ ВОРКЕРОВ
 # ==============================================================================
 resource "local_file" "ansible_inventory" {

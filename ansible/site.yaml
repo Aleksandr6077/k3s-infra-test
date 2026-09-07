@@ -79,6 +79,22 @@
       when: inventory_hostname != groups['k3s_masters'][0]
       throttle: 1  # Подключаем ноды строго по одной, чтобы etcd успевал реплицироваться
 
+    - name: Убедиться, что --tls-san добавлен в аргументы k3s
+      ansible.builtin.lineinfile:
+        path: /etc/systemd/system/k3s.service.d/tls-san.conf
+        create: yes
+        line: 'ExecStart=/usr/local/bin/k3s server --cluster-init --node-ip={{ ansible_default_ipv4.address }} --tls-san={{ yandex_lb_ip }}'
+        regexp: '^ExecStart='
+        notify: restart k3s
+      when: inventory_hostname == groups['k3s_masters'][0]
+
+    - name: Перезапустить k3s для применения новых аргументов (если изменено)
+      ansible.builtin.systemd:
+        name: k3s
+        state: restarted
+        daemon_reload: yes
+      when: inventory_hostname == groups['k3s_masters'][0]
+
 # ==============================================================================
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig
 # ==============================================================================

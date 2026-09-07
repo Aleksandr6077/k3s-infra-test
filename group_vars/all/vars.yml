@@ -2,4 +2,3 @@
 grafana_admin_user: "admin"
 # Ссылка на секретную переменную (префикс vault_)
 grafana_admin_password: "{{ vault_grafana_admin_password }}"
-
