@@ -85,15 +85,17 @@
         create: yes
         line: 'ExecStart=/usr/local/bin/k3s server --cluster-init --node-ip={{ ansible_default_ipv4.address }} --tls-san={{ yandex_lb_ip }}'
         regexp: '^ExecStart='
-        notify: restart k3s
+      register: tls_san_added
       when: inventory_hostname == groups['k3s_masters'][0]
 
-    - name: Перезапустить k3s для применения новых аргументов (если изменено)
+    - name: Перезапустить k3s, если аргументы были изменены
       ansible.builtin.systemd:
         name: k3s
         state: restarted
         daemon_reload: yes
-      when: inventory_hostname == groups['k3s_masters'][0]
+      when: 
+        - inventory_hostname == groups['k3s_masters'][0]
+        - tls_san_added.changed
 
 # ==============================================================================
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig
@@ -113,15 +115,15 @@
   vars_files:
     - ../group_vars/all/vars.yml   
     - ../group_vars/all/vault.yml  
-  pre_tasks:
+  tasks:
     - name: Динамическое обновление адреса API-сервера на IP облачного балансировщика
       ansible.builtin.replace:
         path: "{{ playbook_dir }}/.kube/config"
         regexp: 'server: https://127.0.0.1:6443'
         replace: "server: https://{{ yandex_lb_ip }}:6443"
+      delegate_to: localhost
+      run_once: true
 
-  tasks:
-    # 1. Создаем namespace, чтобы ArgoCD было куда вставать
     - name: Создание пространства имен для ArgoCD
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/.kube/config"
@@ -130,28 +132,24 @@
         kind: Namespace
         state: present
 
-    # 2. Накатываем манифест твоей версии v3.5.1 с обходом лимита CRD
     - name: Установка ArgoCD из официального манифеста (v3.5.1)
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/.kube/config"
         state: present
         src: "https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.1/manifests/install.yaml"
         namespace: argocd
-        apply: true # Включает режим kubectl apply вместо декларативного replace
+        apply: true
         server_side_apply:
-          field_manager: ansible # Передаем словарь вместо bool для защиты от бага Python
+          field_manager: ansible
 
-    # 3. Даем кластеру 15 секунд, чтобы контроллеры ArgoCD зарегистрировали свои типы данных
     - name: Ожидание стабилизации API-схем ArgoCD
       ansible.builtin.pause:
         seconds: 15
 
-    # 4. Ansible деплоит единственный манифест-мост
     - name: Деплой ArgoCD Application для Nginx
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/.kube/config"
         state: present
-        # ИСПРАВЛЕНО: добавили /.. чтобы выйти из папки ansible в корень проекта
         src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/nginx-app.yaml"
 
 
