@@ -49,14 +49,7 @@ variable "k3s_workers" {
       core_fraction = 20
       disk_size     = 15
       zone          = "ru-central1-a"
-    },
-    "worker-2" = {
-      cores         = 2
-      memory        = 2
-      core_fraction = 20
-      disk_size     = 15
-      zone          = "ru-central1-a"
-    }
+        }
   }
 }
 

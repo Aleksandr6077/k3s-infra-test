@@ -15,9 +15,6 @@ ${server.name} ansible_host=${server.network_interface[0].ip_address} internal_i
 ansible_user=ubuntu
 ansible_ssh_private_key_file=~/.ssh/id_rsa
 
-# Переносим IP балансировщика API, чтобы его видели абсолютно все хосты кластера
-yandex_lb_ip=${yandex_lb_ip}
-
 
 
 

@@ -22,7 +22,6 @@ resource "yandex_vpc_subnet" "k3s_public_subnet" {
   zone           = "ru-central1-a"
   network_id     = yandex_vpc_network.k3s_network.id
   v4_cidr_blocks = ["10.200.1.0/24"]
-  # route_table_id здесь НЕ ПРИВЯЗЫВАЕМ, чтобы не ломать SSH-доступ к белому IP
 }
 
 # Приватная подсеть для остальных мастеров — трафик в интернет идет через NAT-шлюз
@@ -34,18 +33,13 @@ resource "yandex_vpc_subnet" "k3s_private_subnet" {
   route_table_id = yandex_vpc_route_table.k3s_route_table.id # Привязываем NAT-шлюз только сюда
 }
 
-# Новая изолированная приватная подсеть строго для воркеров (Production-паттерн)
+# Новая изолированная приватная подсеть строго для воркеров
 resource "yandex_vpc_subnet" "k3s_workers_subnet" {
   name           = "k3s-workers-subnet"
   zone           = "ru-central1-a"
   network_id     = yandex_vpc_network.k3s_network.id
   v4_cidr_blocks = ["10.200.3.0/24"]
   route_table_id = yandex_vpc_route_table.k3s_route_table.id # Переиспользуем NAT-шлюз
-}
-
-# Подключаем созданный вручную статический IP-адрес через Data Source
-data "yandex_vpc_address" "lb_ip" {
-  name = "k3s-lb-static-ip"
 }
 
 # Создаем шлюз NAT для безопасного выхода в интернет приватных нод
@@ -92,9 +86,7 @@ resource "yandex_vpc_security_group" "bastion_sg" {
   }
 }
 
-# ------------------------------------------------------------------------------
-
-# ГРУППА 2: Периметр для нод кластера (Мастера + будущие Воркеры)
+# ГРУППА 2: Периметр для нод кластера
 resource "yandex_vpc_security_group" "cluster_sg" {
   name        = "k3s-cluster-security-group"
   description = "Правила фильтрации трафика для мастеров и воркеров кластера"
@@ -156,7 +148,7 @@ data "yandex_compute_image" "ubuntu" {
 # 4. ВИРТУАЛЬНЫЕ МАШИНЫ (K3S MASTERS) — ПОЛНОСТЬЮ ПРИВАТНЫЕ
 # ==============================================================================
 resource "yandex_compute_instance" "k3s_masters" {
-  count       = 3
+  count       = 1
   name        = "k3s-master-${count.index + 1}"
   zone        = "ru-central1-a"
   platform_id = "standard-v3"
@@ -287,103 +279,15 @@ resource "yandex_compute_instance" "bastion" {
   }
 }
 
-
 # ==============================================================================
-# 5. ОБЛАЧНЫЙ БАЛАНСИРОВЩИК (YANDEX NETWORK LOAD BALANCER)
-# ==============================================================================
-resource "yandex_lb_target_group" "k3s_masters_group" {
-  name = "k3s-masters-target-group"
-
-  dynamic "target" {
-    for_each = yandex_compute_instance.k3s_masters
-    content {
-      # Динамически подставляем ID той подсети, в которой физически нарезана текущая ВМ
-      subnet_id = target.value.network_interface[0].subnet_id
-      address   = target.value.network_interface[0].ip_address
-    }
-  }
-}
-
-resource "yandex_lb_network_load_balancer" "k3s_lb" {
-  name = "k3s-network-load-balancer"
-
-    listener {
-    name        = "k3s-api-listener"
-    port        = 6443
-    target_port = 6443
-    
-    # синтаксис: извлекаем объект адреса из списка через функцию one()
-    external_address_spec {
-      address = one(data.yandex_vpc_address.lb_ip.external_ipv4_address).address
-    }
-  }
-
-  attached_target_group {
-    target_group_id = yandex_lb_target_group.k3s_masters_group.id
-
-    healthcheck {
-      name = "k3s-api-check"
-      tcp_options {
-        port = 6443
-      }
-    }
-  }
-}
-
-# ==============================================================================
-# 5.1 ВНУТРЕННИЙ БАЛАНСИРОВЩИК И ЦЕЛЕВАЯ ГРУППА ДЛЯ ВОРКЕРОВ
-# ==============================================================================
-resource "yandex_lb_target_group" "k3s_workers_group" {
-  name = "k3s-workers-target-group"
-
-  dynamic "target" {
-    for_each = yandex_compute_instance.k3s_workers
-    content {
-      # Пересаживаем таргеты балансировщика в подсеть воркеров
-      subnet_id = yandex_vpc_subnet.k3s_workers_subnet.id
-      address   = target.value.network_interface[0].ip_address
-    }
-  }
-}
-
-resource "yandex_lb_network_load_balancer" "k3s_internal_lb" {
-  name = "k3s-internal-network-load-balancer"
-  type = "internal" # Делает балансировщик строго приватным внутри VPC
-
-  listener {
-    name        = "k3s-internal-web-listener"
-    port        = 80
-    target_port = 80
-    
-    # Сажаем сам балансировщик в подсеть воркеров, изолируя весь веб-контур
-    internal_address_spec {
-      subnet_id = yandex_vpc_subnet.k3s_workers_subnet.id
-    }
-  }
-
-  attached_target_group {
-    target_group_id = yandex_lb_target_group.k3s_workers_group.id
-
-    healthcheck {
-      name = "http-check"
-      http_options {
-        port = 80
-        path = "/"
-      }
-    }
-  }
-}
-
-# ==============================================================================
-# 5.2 Передаем IP-адрес балансировщика в файл(чтобы не было ошибки "Unhandled Error" err="couldn't get current server API group list)
-# ==============================================================================
-resource "local_file" "lb_ip" {
-  content  = "yandex_lb_ip: ${[
-    for addr in one(yandex_lb_network_load_balancer.k3s_lb.listener).external_address_spec :
-    addr.address
-  ][0]}"
-  filename = "${path.module}/../ansible/group_vars/all/lb_ip.yml"
-}
+# 5.2 Передаем IP-адрес балансировщика в файл(чтобы не было ошибки "Unhandled Error" err="couldn't get current server API group list)# ==============================================================================
+#resource "local_file" "lb_ip" {
+  #content  = "yandex_lb_ip: ${[
+    #for addr in one(yandex_lb_network_load_balancer.k3s_lb.listener).external_address_spec :
+    #addr.address
+  #][0]}"
+  #filename = "${path.module}/../ansible/group_vars/all/lb_ip.yml"
+#}
 
 # ==============================================================================
 # 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — С ЗАГЛУШКОЙ ДЛЯ ВОРКЕРОВ
@@ -400,9 +304,6 @@ resource "local_file" "ansible_inventory" {
       
       # Заменили заглушку [] на реальный ресурс воркер-нод
       k3s_workers = yandex_compute_instance.k3s_workers
-      
-      # Безопасно вытаскиваем чистую строку IP-адреса из listener балансировщика API
-      yandex_lb_ip = tolist(tolist(yandex_lb_network_load_balancer.k3s_lb.listener)[0].external_address_spec)[0].address
     }
   )
   filename = "${path.module}/../ansible/hosts.ini"
