@@ -148,7 +148,7 @@ data "yandex_compute_image" "ubuntu" {
 # 4. ВИРТУАЛЬНЫЕ МАШИНЫ (K3S MASTERS) — ПОЛНОСТЬЮ ПРИВАТНЫЕ
 # ==============================================================================
 resource "yandex_compute_instance" "k3s_masters" {
-  count       = 1
+  count       = 3
   name        = "k3s-master-${count.index + 1}"
   zone        = "ru-central1-a"
   platform_id = "standard-v3"
