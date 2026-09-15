@@ -40,16 +40,22 @@ variable "k3s_workers" {
     core_fraction = number
     disk_size     = number
     zone          = string
-  }))
+ })) 
   description = "Конфигурация воркер-нод кластера k3s (имя ноды -> параметры)"
-  default = {
+    default = {
     "worker-1" = {
       cores         = 2
       memory        = 2
       core_fraction = 20
       disk_size     = 15
       zone          = "ru-central1-a"
-        }
+    },
+    "worker-2" = {
+      cores         = 2
+      memory        = 2
+      core_fraction = 20
+      disk_size     = 15
+      zone          = "ru-central1-a"
+    }
   }
 }
-

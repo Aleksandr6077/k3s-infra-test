@@ -13,6 +13,7 @@
   register: remote_kubeconfig
   run_once: true
   become: true
+  delegate_to: "{{ groups['k3s_masters'][0] }}"
 
 - name: Сохраняем kubeconfig в локальную папку проекта
   ansible.builtin.copy:

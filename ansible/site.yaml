@@ -34,7 +34,6 @@
         cmd: >
           curl -sfL https://get.k3s.io | sh -s - server 
           --cluster-init 
-          --tls-san={{ yandex_lb_ip }}
           --node-ip={{ ansible_default_ipv4.address }}
         creates: /etc/rancher/k3s/k3s.yaml
       when: inventory_hostname == groups['k3s_masters'][0]
@@ -72,30 +71,11 @@
         cmd: >
           curl -sfL https://get.k3s.io | sh -s - server 
           --server https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443 
-          --tls-san={{ yandex_lb_ip }}
           --node-ip={{ ansible_default_ipv4.address }}
           --token={{ k3s_cluster_token }}
         creates: /etc/rancher/k3s/k3s.yaml
       when: inventory_hostname != groups['k3s_masters'][0]
       throttle: 1  # Подключаем ноды строго по одной, чтобы etcd успевал реплицироваться
-
-    - name: Убедиться, что --tls-san добавлен в аргументы k3s
-      ansible.builtin.lineinfile:
-        path: /etc/systemd/system/k3s.service.d/tls-san.conf
-        create: yes
-        line: 'ExecStart=/usr/local/bin/k3s server --cluster-init --node-ip={{ ansible_default_ipv4.address }} --tls-san={{ yandex_lb_ip }}'
-        regexp: '^ExecStart='
-      register: tls_san_added
-      when: inventory_hostname == groups['k3s_masters'][0]
-
-    - name: Перезапустить k3s, если аргументы были изменены
-      ansible.builtin.systemd:
-        name: k3s
-        state: restarted
-        daemon_reload: yes
-      when: 
-        - inventory_hostname == groups['k3s_masters'][0]
-        - tls_san_added.changed
 
 # ==============================================================================
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig
@@ -116,14 +96,6 @@
     - ../group_vars/all/vars.yml   
     - ../group_vars/all/vault.yml  
   tasks:
-    - name: Динамическое обновление адреса API-сервера на IP облачного балансировщика
-      ansible.builtin.replace:
-        path: "{{ playbook_dir }}/.kube/config"
-        regexp: 'server: https://127.0.0.1:6443'
-        replace: "server: https://{{ yandex_lb_ip }}:6443"
-      delegate_to: localhost
-      run_once: true
-
     - name: Создание пространства имен для ArgoCD
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/.kube/config"
