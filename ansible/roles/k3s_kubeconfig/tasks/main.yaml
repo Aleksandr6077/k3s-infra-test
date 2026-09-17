@@ -20,9 +20,17 @@
     content: "{{ remote_kubeconfig['content'] | b64decode }}"
     dest: "{{ playbook_dir }}/.kube/config"
     mode: '0600'
+    force: yes
   delegate_to: localhost
   run_once: true
 
+- name: Принудительно устанавливаем server = 127.0.0.1 в kubeconfig
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/.kube/config"
+    regexp: 'server: https://.*:6443'
+    replace: 'server: https://127.0.0.1:6443'
+  delegate_to: localhost
+  run_once: true
 
 
 
