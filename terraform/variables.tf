@@ -55,7 +55,7 @@ variable "k3s_workers" {
       memory        = 2
       core_fraction = 20
       disk_size     = 15
-      zone          = "ru-central1-a"
+      zone          = "ru-central1-b"
     }
   }
 }
