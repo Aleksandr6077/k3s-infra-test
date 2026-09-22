@@ -5,9 +5,14 @@ locals {
     "198.18.248.0/24"
   ]
 
-  # Объединяем IP и диапазоны проверок Яндекса в один список для порта K3s API
-  k3s_api_allowed_cidrs = concat(var.admin_allowed_ips, local.yc_internal_lb_healthchecks)
+# Объединяем IP админа, CI/CD и healthcheck-диапазоны Яндекса в один список для порта K3s API
+  k3s_api_allowed_cidrs = concat(
+    var.admin_allowed_ips,
+    var.cicd_allowed_ips,
+    local.yc_internal_lb_healthchecks
+  )
 }
+
 
 # ==============================================================================
 # 1. СЕТЕВАЯ ИНФРАСТРУКТУРА (VPC, ПУБЛИЧНАЯ И ПРИВАТНАЯ СУБНЕТЫ)
@@ -48,8 +53,6 @@ resource "yandex_vpc_subnet" "k3s_private_subnet_d" {
   v4_cidr_blocks = ["10.202.2.0/24"]
   route_table_id = yandex_vpc_route_table.k3s_route_table.id
 }
-
-
 
 # Новая изолированная приватная подсеть строго для воркеров (по одной на зону)
 resource "yandex_vpc_subnet" "k3s_workers_subnet_a" {
@@ -344,7 +347,7 @@ resource "local_file" "ansible_inventory" {
       # Передаем список объектов мастеров целиком для Jinja2-цикла
       k3s_masters = yandex_compute_instance.k3s_masters
       
-      # Заменили заглушку [] на реальный ресурс воркер-нод
+      # Заменили заглушку [] на реальный ресурс воркер-нод и Передаем IP NLB в Ansible
       k3s_workers = yandex_compute_instance.k3s_workers
     }
   )

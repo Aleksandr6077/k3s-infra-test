@@ -21,4 +21,3 @@ output "k3s_workers_internal_ips" {
 
 
 
-

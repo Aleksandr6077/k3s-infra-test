@@ -33,7 +33,7 @@
       ansible.builtin.shell:
         cmd: >
           curl -sfL https://get.k3s.io | sh -s - server 
-          --cluster-init 
+          --cluster-init
           --node-ip={{ ansible_default_ipv4.address }}
         creates: /etc/rancher/k3s/k3s.yaml
       when: inventory_hostname == groups['k3s_masters'][0]

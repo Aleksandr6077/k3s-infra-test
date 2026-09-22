@@ -59,3 +59,9 @@ variable "k3s_workers" {
     }
   }
 }
+
+variable "cicd_allowed_ips" {
+  type        = list(string)
+  description = "Список IP-адресов CI/CD раннеров для доступа к Kubernetes API (6443)"
+  default     = []
+}
