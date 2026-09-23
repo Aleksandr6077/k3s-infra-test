@@ -411,6 +411,11 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
   - `10.200.3.0/24` — рабочие узлы, зона A
   - `10.201.3.0/24` — рабочие узлы, зона B
 
+- **Longhorn** — распределённое блочное хранилище для HA данных (2 реплики).
+- Роль `longhorn` в Ansible: установка `open-iscsi`, `nfs-common`, Helm-чарта.
+- `ЭТАП 4` в `site.yaml` — установка Longhorn после ArgoCD.
+
+
 ### Протестировано
  - Проверена автоматическая синхронизация ArgoCD после коммита в master (текст обновляется без ручного вмешательства)
  - Приложение my-nginx работает в default namespace, 1 под в статусе Running

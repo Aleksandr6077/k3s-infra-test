@@ -123,6 +123,15 @@
         kubeconfig: "{{ playbook_dir }}/.kube/config"
         state: present
         src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/nginx-app.yaml"
+# ==============================================================================
+# ЭТАП 4: Установка Longhorn (распределённое блочное хранилище)
+# ==============================================================================
+- name: Установка Longhorn в кластер K3s
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - longhorn
+
 
 
 

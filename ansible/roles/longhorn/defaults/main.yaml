@@ -1,0 +1,9 @@
+---
+# Количество реплик для томов Longhorn
+longhorn_replica_count: 2
+
+# Namespace для Longhorn
+longhorn_namespace: longhorn-system
+
+# Версия Helm-чарта Longhorn
+longhorn_chart_version: "1.7.2"
