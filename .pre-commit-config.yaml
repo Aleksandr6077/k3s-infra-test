@@ -10,7 +10,26 @@ repos:
 
       - id: secret-grabber
         name: Check for Hardcoded Secrets (Trivy)
-        # Ищем секреты силами Trivy
         entry: trivy fs --scanners secret --exit-code 1 .
         language: system
+        pass_filenames: false
+
+      - id: yamllint
+        name: Lint YAML
+        entry: yamllint -c .yamllint
+        language: system
+        files: \.(yaml|yml)$
+
+      - id: terraform-fmt
+        name: Format Terraform
+        entry: tofu fmt -check -recursive
+        language: system
+        files: \.tf$
+        pass_filenames: false
+
+      - id: ansible-lint
+        name: Lint Ansible
+        entry: ansible-lint
+        language: system
+        files: ^ansible/.*\.ya?ml$
         pass_filenames: false
