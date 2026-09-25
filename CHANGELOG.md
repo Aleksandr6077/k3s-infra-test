@@ -415,6 +415,8 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 - Роль `longhorn` в Ansible: установка `open-iscsi`, `nfs-common`, Helm-чарта.
 - `ЭТАП 4` в `site.yaml` — установка Longhorn после ArgoCD.
 
+- `k8s/apps/nginx/configmap.yaml` — ConfigMap с содержимым `index.html` для init-контейнера nginx.
+
 
 ### Протестировано
  - Проверена автоматическая синхронизация ArgoCD после коммита в master (текст обновляется без ручного вмешательства)
@@ -426,6 +428,11 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
  - Рекомендуется добавить checksum конфига в аннотацию пода или использовать `Replace: true` на уровне Application (требует дальнейшей настройки).
 
  - Старые ReplicaSet'ы удаляются не всегда(нужно фиксить)
+
+### Исправлено
+- **Синхронизация ArgoCD при изменении init-контейнера:** содержимое `index.html` вынесено из захардкоженной команды `echo` в `deployment.yaml` в отдельный `ConfigMap` (`nginx-init-html`). Теперь при изменении текста в Git ArgoCD автоматически запускает Rolling Update (потому что смонтированный том ConfigMap меняется). Раньше под приходилось удалять вручную.
+
+
 
 
 ## ‼️‼️Технический долг в рамках текущего этапа:

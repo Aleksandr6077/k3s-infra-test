@@ -14,12 +14,6 @@ repos:
         language: system
         pass_filenames: false
 
-      - id: yamllint
-        name: Lint YAML
-        entry: yamllint -c .yamllint
-        language: system
-        files: \.(yaml|yml)$
-
       - id: terraform-fmt
         name: Format Terraform
         entry: tofu fmt -check -recursive

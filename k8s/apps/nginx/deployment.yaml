@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,91 +41,92 @@ spec:
         runAsUser: 101
         fsGroup: 101
         seccompProfile:
-          type: RuntimeDefault # Защита от системных вызовов мимо рантайма кубера
+          type: RuntimeDefault
 
       initContainers:
-      - name: init-html
-        image: alpine:3.19
-        command: 
-          - 'sh'
-          - '-c'
-          - 'echo "<h1>GitOps test: v3! ArgoCD sync works!</h1>" > /data/index.html'
-        volumeMounts:
-        - name: nginx-storage
-          mountPath: /data
-        - name: ephemeral-tmp
-          mountPath: /tmp
+        - name: init-html
+          image: alpine:3.19
+          command:
+            - 'sh'
+            - '-c'
+            - 'cp /config/index.html /data/index.html'
+          volumeMounts:
+            - name: nginx-storage
+              mountPath: /data
+            - name: nginx-init-config
+              mountPath: /config
+              readOnly: true
+            - name: ephemeral-tmp
+              mountPath: /tmp
 
       containers:
-      - name: nginx
-        image: nginxinc/nginx-unprivileged:1.25-alpine
-        ports:
-        - containerPort: 8080
-          name: http
-        resources:
-          requests:
-            memory: "32Mi"
-            cpu: "50m"
-          limits:
-            memory: "64Mi"
-            cpu: "200m"
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.25-alpine
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "64Mi"
+              cpu: "200m"
 
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true   # Корень контейнера полностью заблокирован на запись
-          capabilities:
-            drop:
-              - ALL # Чистый non-privileged процесс без системных капабилити
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
 
-        lifecycle:
-          preStop:
-            exec:
-              command: ["/bin/sh", "-c", "sleep 10 && nginx -s quit"] # Graceful shutdown для очистки сессий в Traefik
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10 && nginx -s quit"]
 
-        # ОПТИМИЗАЦИЯ: Ускорен запуск первой проверки. Легковесный Nginx готов принимать трафик сразу.
-        readinessProbe:
-          httpGet:
-            path: /index.html
-            port: 8080
-          initialDelaySeconds: 1 
-          periodSeconds: 5
-          timeoutSeconds: 2
-          failureThreshold: 3
-        livenessProbe:
-          httpGet:
-            path: /index.html
-            port: 8080
-          initialDelaySeconds: 5 
-          periodSeconds: 10
-          timeoutSeconds: 2
-          failureThreshold: 3
-        
-        volumeMounts:
-        - name: nginx-storage
-          mountPath: /usr/share/nginx/html
-        - name: nginx-cache
-          mountPath: /var/cache/nginx
-        - name: nginx-run
-          mountPath: /var/run
-        # ИСПРАВЛЕНИЕ: Мапим /var/tmp в emptyDir. Сюда Nginx сбрасывает буфер больших POST-запросов.
-        - name: ephemeral-tmp
-          mountPath: /var/tmp
-        - name: ephemeral-tmp
-          mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /index.html
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          volumeMounts:
+            - name: nginx-storage
+              mountPath: /usr/share/nginx/html
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: ephemeral-tmp
+              mountPath: /var/tmp
+            - name: ephemeral-tmp
+              mountPath: /tmp
 
       volumes:
-      - name: nginx-storage
-        persistentVolumeClaim:
-          claimName: nginx-pvc
-      # Все временные директории монтируются как emptyDir (в RAM-диск), чтобы не писать на readOnlyRootFilesystem
-      - name: nginx-cache
-        emptyDir:
-          medium: Memory
-      - name: nginx-run
-        emptyDir:
-          medium: Memory
-      - name: ephemeral-tmp
-        emptyDir:
-          medium: Memory
-
-
+        - name: nginx-storage
+          persistentVolumeClaim:
+            claimName: nginx-pvc
+        - name: nginx-init-config
+          configMap:
+            name: nginx-init-html
+        - name: nginx-cache
+          emptyDir:
+            medium: Memory
+        - name: nginx-run
+          emptyDir:
+            medium: Memory
+        - name: ephemeral-tmp
+          emptyDir:
+            medium: Memory
