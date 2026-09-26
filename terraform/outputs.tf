@@ -17,7 +17,13 @@ output "k3s_workers_internal_ips" {
   value       = [for worker in yandex_compute_instance.k3s_workers : worker.network_interface[0].ip_address]
 }
 
-
+output "k3s_ingress_nlb_ip" {
+  description = "Публичный IP NLB для Ingress (80/443)"
+  value = [
+    for listener in yandex_lb_network_load_balancer.k3s_ingress_nlb.listener :
+    [for addr in listener.external_address_spec : addr.address][0]
+  ][0]
+}
 
 
 

@@ -132,6 +132,12 @@
   roles:
     - longhorn
 
+- name: Копируем Traefik HelmChartConfig
+  kubernetes.core.k8s:
+    kubeconfig: "{{ playbook_dir }}/.kube/config"
+    state: present
+    src: "{{ playbook_dir }}/../k8s/platform/traefik-config.yaml"
+
 
 
 

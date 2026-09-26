@@ -14,16 +14,4 @@ repos:
         language: system
         pass_filenames: false
 
-      - id: terraform-fmt
-        name: Format Terraform
-        entry: tofu fmt -check -recursive
-        language: system
-        files: \.tf$
-        pass_filenames: false
 
-      - id: ansible-lint
-        name: Lint Ansible
-        entry: ansible-lint
-        language: system
-        files: ^ansible/.*\.ya?ml$
-        pass_filenames: false

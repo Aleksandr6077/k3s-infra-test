@@ -417,22 +417,41 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 
 - `k8s/apps/nginx/configmap.yaml` — ConfigMap с содержимым `index.html` для init-контейнера nginx.
 
+## ✅ 5. Changelog: Этап 14
+
+### Добавлено
+- **NLB для Ingress (80/443)** — внешний Network Load Balancer для доступа к приложениям через Traefik.
+- **Фиксация NodePort Traefik** через `HelmChartConfig` (`k8s/platform/traefik-config.yaml`) — NodePort зафиксированы на `30080` (HTTP) и `30443` (HTTPS).
+- **Публичная подсеть в `ru-central1-b`** (`k3s-public-subnet-b`) — для бастиона, если зона а будет недоступна.
+- **Бастион перенесён в `ru-central1-b`** — из-за недоступности `ru-central1-a`.
+- **Роль `longhorn`** в Ansible — установка Longhorn (2 реплики) для HA-хранилища.
+- **Traefik NodePort** — правила SG для `30080`/`30443`.
+- **Правило SG для API (6443)** — healthcheck-диапазоны Yandex (`198.18.235.0/24`, `198.18.248.0/24`).
+
+### Изменено
+- **Nginx:** манифесты преобразованы в **Helm-чарт** с `checksum/config` для автоматического `Rolling Update`.
+- **Ansible-роль `k3s_kubeconfig`** — путь исправлен на `{{ playbook_dir }}/../.kube/config` (корень проекта).
+- **Terraform** — NLB для Ingress (target group — мастера, т.к. Traefik запущен на мастерах).
+
+### Исправлено
+- **Синхронизация ArgoCD при изменении init-контейнера:** Helm-чарт + `checksum/config` в аннотациях Deployment. При изменении ConfigMap → Rolling Update автоматически.
+- **`outputs.tf`:** NLB IP через `for`-выражение (т.к. `one()` не работает с 2 listener'ами).
+- **`k3s_kubeconfig`:** `replace` теперь указывает на файл `.kube/config`, а не на директорию.
+
 
 ### Протестировано
  - Проверена автоматическая синхронизация ArgoCD после коммита в master (текст обновляется без ручного вмешательства)
  - Приложение my-nginx работает в default namespace, 1 под в статусе Running
 
 ### *Known Issues / Next Steps*
- - Для применения изменений в содержимом init-контейнера под требует ручного удаления (ArgoCD не пересоздаёт под автоматически, если не изменился spec).
+*Для применения изменений в содержимом init-контейнера под требует ручного удаления (ArgoCD не пересоздаёт под автоматически, если не изменился spec).*
 
- - Рекомендуется добавить checksum конфига в аннотацию пода или использовать `Replace: true` на уровне Application (требует дальнейшей настройки).
+ - ~~Рекомендуется добавить checksum конфига в аннотацию пода или использовать `Replace: true` на уровне Application (требует дальнейшей настройки).~~
 
  - Старые ReplicaSet'ы удаляются не всегда(нужно фиксить)
 
- - Исправить синху Арго: SHA-хэш в аннотациях Deployment добавить, либо ArgoCD Sync Waves / Hooks либо Вообще отказаться от init-контейнера (там только статика)
+ - ~~Исправить синху Арго: SHA-хэш в аннотациях Deployment добавить, либо ArgoCD Sync Waves / Hooks либо Вообще отказаться от init-контейнера (там только статика)~~
 
-### Исправлено
-- **Синхронизация ArgoCD при изменении init-контейнера:** содержимое `index.html` вынесено из захардкоженной команды `echo` в `deployment.yaml` в отдельный `ConfigMap` (`nginx-init-html`). Теперь при изменении текста в Git ArgoCD автоматически запускает Rolling Update (потому что смонтированный том ConfigMap меняется). Раньше под приходилось удалять вручную. (‼️‼️‼️‼️‼️‼️не работает, ConfigMap меняется, но Rolling Update **НЕ** запускается автоматом ‼️‼️‼️‼️‼️)
 
 
 ## ‼️‼️Технический долг в рамках текущего этапа:
@@ -442,7 +461,7 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 3. ‼️ ~~Развертывание **ArgoCD** внутри кластера K3s~~
 4. ‼️ миграция деплоя манифестов мониторинга (Loki, Grafana, Prometheus) в `GitOps`-пайплайны
 5. ‼️ ~~Тестирование GitOps-петли и синхронизации  ‼️‼️‼️‼️‼️~~
-6. ‼️ ~~Добавим Worker-ноды, Развернем второй NLB для веб-трафика `(80/443)`~~ и Установим ArgoCD
+6. ‼️ ~~Добавим Worker-ноды, Развернем второй NLB для веб-трафика `(80/443)`~~ и Установим ArgoCD~~
 7. ‼️ ~~Лок стейта S3 для исключения дрифта при одновремнном tofu apply~~
 8. ‼️ ~~Yandex Database (Serverless) `ydb.tf` - добавить защиту от удаления~~
 9. ‼️~~Мультизональность(например `a b c`)~~
@@ -450,7 +469,7 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 
 ## 🚦 Текущий статус проекта
 
-### Проект находится в облачной инфре (Zonal HA) Yandex Cloud.
+### Проект находится в облачной инфре (MultiZonal HA) Yandex Cloud.
 
  - Приложение `my-nginx` работает в `default` namespace, 1 под в статусе `Running`.
  - ArgoCD показывает статус `Synced` и `Healthy`.

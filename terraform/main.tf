@@ -21,12 +21,19 @@ resource "yandex_vpc_network" "k3s_network" {
   name = "k3s-network"
 }
 
-# Публичная подсеть для Бастиона (k3s-master-1) — трафик идет напрямую без NAT-шлюза
+# Публичная подсеть для Бастиона — трафик идет напрямую без NAT-шлюза
 resource "yandex_vpc_subnet" "k3s_public_subnet" {
   name           = "k3s-public-subnet"
   zone           = "ru-central1-a"
   network_id     = yandex_vpc_network.k3s_network.id
   v4_cidr_blocks = ["10.200.1.0/24"]
+}
+
+resource "yandex_vpc_subnet" "k3s_public_subnet_b" {
+  name           = "k3s-public-subnet-b"
+  zone           = "ru-central1-b"
+  network_id     = yandex_vpc_network.k3s_network.id
+  v4_cidr_blocks = ["10.201.1.0/24"]
 }
 
 # Приватная подсеть для остальных мастеров (по одной на зону) — трафик в интернет идет через NAT-шлюз
@@ -147,15 +154,15 @@ resource "yandex_vpc_security_group" "cluster_sg" {
   # Входящий HTTP/HTTPS для приложений (заготовка под Ingress на воркерах)
   ingress {
     protocol       = "TCP"
-    description    = "Входящий HTTP для веб-сервисов"
+    description    = "Traefik HTTP NodePort"
     v4_cidr_blocks = ["0.0.0.0/0"]
-    port           = 80
+    port           = 30360
   }
   ingress {
     protocol       = "TCP"
-    description    = "Входящий HTTPS для веб-сервисов"
+    description    = "Traefik HTTPS NodePort"
     v4_cidr_blocks = ["0.0.0.0/0"]
-    port           = 443
+    port           = 31181
   }
 
   # Исходящий трафик для кластера (необходим для работы NAT-шлюза)
@@ -285,7 +292,7 @@ resource "yandex_compute_instance" "k3s_workers" {
 # ==============================================================================
 resource "yandex_compute_instance" "bastion" {
   name        = "k3s-bastion"
-  zone        = "ru-central1-a"
+  zone        = "ru-central1-b"
   platform_id = "standard-v3"
 
   labels = {
@@ -314,7 +321,7 @@ resource "yandex_compute_instance" "bastion" {
 
   network_interface {
     # Бастион сажаем строго в публичную подсеть и выдаем ему публичный IP
-    subnet_id          = yandex_vpc_subnet.k3s_public_subnet.id
+    subnet_id          = yandex_vpc_subnet.k3s_public_subnet_b.id
     nat                = true
     security_group_ids = [yandex_vpc_security_group.bastion_sg.id]
   }
@@ -333,6 +340,57 @@ resource "yandex_compute_instance" "bastion" {
   #][0]}"
   #filename = "${path.module}/../ansible/group_vars/all/lb_ip.yml"
 #}
+
+# ==============================================================================
+# 5. ВНЕШНИЙ NLB ДЛЯ INGRESS (80/443)
+# ==============================================================================
+resource "yandex_lb_target_group" "k3s_ingress_tg" {
+  name = "k3s-ingress-target-group"
+
+  dynamic "target" {
+    for_each = yandex_compute_instance.k3s_masters
+    content {
+      subnet_id = target.value.network_interface[0].subnet_id
+      address   = target.value.network_interface[0].ip_address
+    }
+  }
+}
+
+resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
+  name = "k3s-ingress-nlb"
+  type = "external"
+
+  listener {
+    name        = "http"
+    port        = 80
+    target_port = 30360
+    external_address_spec {
+      ip_version = "ipv4"
+    }
+  }
+
+  listener {
+    name        = "https"
+    port        = 443
+    target_port = 31181
+    external_address_spec {
+      ip_version = "ipv4"
+    }
+  }
+
+  attached_target_group {
+    target_group_id = yandex_lb_target_group.k3s_ingress_tg.id
+
+    healthcheck {
+      name = "http-healthcheck"
+      http_options {
+        port = 30360
+        path = "/"
+      }
+    }
+  }
+}
+
 
 # ==============================================================================
 # 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — С ЗАГЛУШКОЙ ДЛЯ ВОРКЕРОВ

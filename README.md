@@ -127,36 +127,45 @@
 k3s-infra-test/
 ├── .gitverse/.github/
 │   └── workflows/
-│       └── ci.yaml             # CI/CD пайплайн для автоматизации (GitHub/GitVerse)
+│       └── ci.yaml                  # CI/CD пайплайн (GitHub/GitVerse)
 ├── ansible/
 │   ├── roles/
-│   │   ├── k3s_kubeconfig/     # Копирование и локальный импорт kubeconfig
-│   │   └── local_env/          # Настройка локального окружения разработчика
-│   ├── hosts.ini               # Инвентарь (автогенерация при поднятии стенда)
-│   └── site.yaml               # Главный плейбук (Provisioning, K3s и Helm-деплой ArgoCD)
+│   │   ├── k3s_kubeconfig/          # Копирование и локальный импорт kubeconfig
+│   │   ├── local_env/               # Настройка локального окружения разработчика
+│   │   └── longhorn/                # Установка Longhorn (HA-хранилище)
+│   ├── hosts.ini                    # Инвентарь (автогенерация при поднятии стенда)
+│   └── site.yaml                    # Главный плейбук (Provisioning, K3s, ArgoCD, Longhorn)
 ├── k8s/
 │   ├── apps/
-│   │   └── nginx/
-│   │       ├── pvc.yaml        # Слой хранения данных (PersistentVolumeClaim)
-│   │       ├── deployment.yaml # Слой вычислений, лимитов и рантайм-безопасности
-│   │       ├── service.yaml    # Слой внутренней сети кластера (ClusterIP)
-│   │       └── ingress.yaml    # Слой входной маршрутизации трафика (Traefik)
+│   │   └── nginx/                   # Helm-чарт приложения
+│   │       ├── Chart.yaml           # Метаданные чарта
+│   │       ├── values.yaml          # Переменные (образ, реплики, ресурсы)
+│   │       ├── files/
+│   │       │   └── index.html       # Статический контент
+│   │       └── templates/
+│   │           ├── _helpers.tpl     # Шаблоны имён и меток
+│   │           ├── configmap.yaml   # ConfigMap с index.html
+│   │           ├── deployment.yaml  # Deployment (с checksum/config)
+│   │           ├── service.yaml     # Service (ClusterIP)
+│   │           ├── pvc.yaml         # PersistentVolumeClaim
+│   │           └── ingress.yaml     # Ingress (Traefik)
 │   ├── platform/
-│   │   └── argocd-apps/
-│   │       └── nginx-app.yaml  # Манифест ArgoCD Application (GitOps-мост)
-│   ├── loki-values.yaml        # Настройки для Helm-чарта Grafana Loki
-│   └── mon-values.yaml         # Настройки для Helm-чарта Prometheus Operator
-├── terraform/                  # Инфраструктура как код (IaC) для Яндекс Облака
-│   ├── hosts.ini.tpl           # Шаблон для автогенерации инвентаря Ansible
-│   ├── main.tf                 # Описание VPC, подсетей, Security Groups и ВМ
-│   ├── outputs.tf              # Вывод публичных IP-адресов созданных машин
-│   ├── providers.tf            # Настройка провайдера Яндекса и зеркала РФ
-│   └── variables.tf            # Объявление переменных кластера
-├── .pre-commit-config.yaml     # Локальные хуки проверок (trivy etc.)
-├── CHANGELOG.md                # История изменений проекта
-├── LICENSE                     # Лицензия проекта
-├── Makefile                    # Скрипты автоматизации команд (make up, make down)
-└── README.md                   # Документация проекта
+│   │   ├── argocd-apps/
+│   │   │   └── nginx-app.yaml       # ArgoCD Application (GitOps-мост)
+│   │   └── traefik-config.yaml      # HelmChartConfig для фиксации NodePort
+│   ├── loki-values.yaml             # Настройки для Helm-чарта Grafana Loki
+│   └── mon-values.yaml              # Настройки для Helm-чарта Prometheus Operator
+├── terraform/                       # IaC для Яндекс Облака
+│   ├── hosts.ini.tpl                # Шаблон для автогенерации инвентаря Ansible
+│   ├── main.tf                      # VPC, подсети, Security Groups, ВМ, NLB
+│   ├── outputs.tf                   # Вывод публичных IP и IP NLB
+│   ├── providers.tf                 # Настройка провайдера Яндекса
+│   └── variables.tf                 # Объявление переменных кластера
+├── .pre-commit-config.yaml          # Хуки проверок (trivy etc.)
+├── CHANGELOG.md                     # История изменений проекта
+├── LICENSE                          # Лицензия проекта
+├── Makefile                         # Скрипты автоматизации (make up, make down)
+└── README.md                        # Документация проекта
 
 
 ```
@@ -179,7 +188,8 @@ k3s-infra-test/
    ```
 
 2. **Конфигурация кластера (Ansible):**
-   Настроить Zonal-кластер k3s на развернутых нодах, установить локальные утилиты разработчика (K9s), автоматически импортировать доступы (`kubeconfig`) и развернуть прикладной стек (Nginx, Prometheus, Grafana, Loki):
+   Настроить MultiZonal-кластер k3s на развернутых нодах, автоматически импортировать доступы (`kubeconfig`)
+   
    ```bash
    make ansible-deploy
    ```

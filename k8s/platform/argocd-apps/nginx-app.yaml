@@ -10,9 +10,12 @@ spec:
   
   # 1. Желаемое состояние
   source:
-    repoURL: 'https://github.com/Aleksandr6077/k3s-infra-test' # Ссылка на монорепозиторий
-    targetRevision: HEAD # Следим за главной веткой
-    path: k8s/apps/nginx # СТРОГО указываем папку. На изменения в Ansible-папках ArgoCD реагировать НЕ БУДЕТ, но! он все равно будет выкачить ВЕСЬ репоз. Исправляем(аннотации)
+    repoURL: 'https://github.com/Aleksandr6077/k3s-infra-test'
+    targetRevision: HEAD
+    path: k8s/apps/nginx
+    helm:
+      valueFiles:
+        - values.yaml
 
     # 2. Реальное состояние
   destination:

@@ -1,0 +1,32 @@
+---
+replicaCount: 1
+
+image:
+  repository: nginxinc/nginx-unprivileged
+  tag: "1.25-alpine"
+  pullPolicy: IfNotPresent
+
+initImage:
+  repository: alpine
+  tag: "3.19"
+
+resources:
+  requests:
+    memory: "32Mi"
+    cpu: "50m"
+  limits:
+    memory: "64Mi"
+    cpu: "200m"
+
+storage:
+  size: 1Gi
+  storageClassName: local-path
+
+service:
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: traefik
+  host: my-app.local

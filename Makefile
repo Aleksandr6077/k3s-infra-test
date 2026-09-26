@@ -112,10 +112,9 @@ deletedb:
 	@echo "$(RED)Сносим бд в папке терраформа$(NC)"
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu state rm yandex_ydb_database_serverless.tf_state_lock
 
+taint:
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu taint yandex_compute_instance.bastion
 
 
-
-
-
-
-
+testgitops:
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu output -raw k3s_ingress_nlb_ip

@@ -2,12 +2,12 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my-nginx
-  namespace: default
+  name: {{ include "nginx.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: my-nginx
+    {{- include "nginx.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   revisionHistoryLimit: 1
   strategy:
     type: RollingUpdate
@@ -16,36 +16,33 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: my-nginx
+      {{- include "nginx.labels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: my-nginx
+        {{- include "nginx.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       affinity:
         podAntiAffinity:
-          # НАДЕЖНОСТЬ: Изменено на жесткое правило. Поды ОБЯЗАНЫ разворачиваться на разных нодах.
-          # Если одна нода упадет, вторая продолжит держать 100% трафика без деградации до SPOF.
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchExpressions:
                   - key: app
                     operator: In
                     values:
-                      - my-nginx
+                      - {{ include "nginx.name" . }}
               topologyKey: "kubernetes.io/hostname"
-
-      # БЕЗОПАСНОСТЬ: Изоляция на уровне пода
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
         fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
-
       initContainers:
         - name: init-html
-          image: alpine:3.19
+          image: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag }}"
           command:
             - 'sh'
             - '-c'
@@ -58,37 +55,29 @@ spec:
               readOnly: true
             - name: ephemeral-tmp
               mountPath: /tmp
-
       containers:
         - name: nginx
-          image: nginxinc/nginx-unprivileged:1.25-alpine
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: 8080
+            - containerPort: {{ .Values.service.targetPort }}
               name: http
           resources:
-            requests:
-              memory: "32Mi"
-              cpu: "50m"
-            limits:
-              memory: "64Mi"
-              cpu: "200m"
-
+            {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
-
           lifecycle:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "sleep 10 && nginx -s quit"]
-
           readinessProbe:
             httpGet:
               path: /index.html
-              port: 8080
+              port: {{ .Values.service.targetPort }}
             initialDelaySeconds: 1
             periodSeconds: 5
             timeoutSeconds: 2
@@ -96,12 +85,11 @@ spec:
           livenessProbe:
             httpGet:
               path: /index.html
-              port: 8080
+              port: {{ .Values.service.targetPort }}
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
-
           volumeMounts:
             - name: nginx-storage
               mountPath: /usr/share/nginx/html
@@ -113,14 +101,13 @@ spec:
               mountPath: /var/tmp
             - name: ephemeral-tmp
               mountPath: /tmp
-
       volumes:
         - name: nginx-storage
           persistentVolumeClaim:
-            claimName: nginx-pvc
+            claimName: {{ include "nginx.fullname" . }}-pvc
         - name: nginx-init-config
           configMap:
-            name: nginx-init-html
+            name: {{ include "nginx.fullname" . }}-init-html
         - name: nginx-cache
           emptyDir:
             medium: Memory
