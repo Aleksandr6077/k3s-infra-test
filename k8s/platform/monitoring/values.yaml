@@ -1,0 +1,100 @@
+---
+# ==============================================================================
+# Prometheus
+# ==============================================================================
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+# ==============================================================================
+# Grafana
+# ==============================================================================
+grafana:
+  admin:
+    existingSecret: "grafana-admin-credentials"
+    userKey: "admin-user"
+    passwordKey: "admin-password"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# ==============================================================================
+# Alertmanager
+# ==============================================================================
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    volumes:
+      - name: telegram-secret
+        secret:
+          secretName: alertmanager-telegram
+    volumeMounts:
+      - name: telegram-secret
+        mountPath: /etc/alertmanager/secrets/telegram
+        readOnly: true
+
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: telegram
+      group_by: ['alertname', 'namespace']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 3h
+    receivers:
+      - name: telegram
+        telegram_configs:
+          - bot_token_file: /etc/alertmanager/secrets/telegram/bot_token
+            chat_id_file: /etc/alertmanager/secrets/telegram/chat_id
+            send_resolved: true
+            parse_mode: HTML
+
+# ==============================================================================
+# Alert Rules
+# ==============================================================================
+additionalPrometheusRulesMap:
+  custom-rules:
+    groups:
+      - name: custom
+        rules:
+          - alert: NodeDown
+            expr: up{job="node-exporter"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Node {{ $labels.instance }} is down"
+
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+
+          - alert: HighCPU
+            expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU on {{ $labels.instance }}"

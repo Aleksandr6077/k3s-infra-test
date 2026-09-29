@@ -427,11 +427,15 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 - **Роль `longhorn`** в Ansible — установка Longhorn (2 реплики) для HA-хранилища.
 - **Traefik NodePort** — правила SG для `30080`/`30443`.
 - **Правило SG для API (6443)** — healthcheck-диапазоны Yandex (`198.18.235.0/24`, `198.18.248.0/24`).
+ - **ArgoCD Application `monitoring`** — установка `kube-prometheus-stack` (Prometheus + Grafana + Alertmanager) через Helm
+ - **Telegram-Alerting**
+
 
 ### Изменено
 - **Nginx:** манифесты преобразованы в **Helm-чарт** с `checksum/config` для автоматического `Rolling Update`.
 - **Ansible-роль `k3s_kubeconfig`** — путь исправлен на `{{ playbook_dir }}/../.kube/config` (корень проекта).
 - **Terraform** — NLB для Ingress (target group — мастера, т.к. Traefik запущен на мастерах).
+- **Ansible `site.yaml`:** Таска `Инициализация первого мастера` и `Подключение остальных мастеров` теперь проверяют наличие `/usr/local/bin/k3s` (бинарь), а не `k3s.yaml` (конфиг). Это устраняет пропуск установки, если конфиг остался от предыдущего запуска.
 
 ### Исправлено
 - **Синхронизация ArgoCD при изменении init-контейнера:** Helm-чарт + `checksum/config` в аннотациях Deployment. При изменении ConfigMap → Rolling Update автоматически.
@@ -452,7 +456,10 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 
  - ~~Исправить синху Арго: SHA-хэш в аннотациях Deployment добавить, либо ArgoCD Sync Waves / Hooks либо Вообще отказаться от init-контейнера (там только статика)~~
 
-
+ - **WIP:**требует тестирования:
+    - проверить синхронизацию `ArgoCD`, работу `Prometheus/Grafana`
+    - Alert rules:** `NodeDown`, `PodCrashLooping`, `HighCPU`
+    - проверить доставку алертов в `Telegram`
 
 ## ‼️‼️Технический долг в рамках текущего этапа:
 

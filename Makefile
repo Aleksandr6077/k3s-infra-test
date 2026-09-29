@@ -4,7 +4,7 @@
 TOFU_DIR    := terraform
 ANSIBLE_DIR := ansible
 
-VAULT_FILE  := $(ANSIBLE_DIR)/group_vars/all/vault.yml
+VAULT_FILE  := group_vars/all/vault.yml
 PASS_FILE   := .ansible_vault_pass.txt
 SA_KEY_FILE := sa_key.json
 
