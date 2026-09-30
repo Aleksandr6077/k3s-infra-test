@@ -2,10 +2,11 @@
 
 Проектирование, автоматизация развертывания (IaC OpenTofu/Ansible) и обеспечение высокой доступности распределенного кластера K3s в облачной инфраструктуре Yandex Cloud с интегрированным стеком мониторинга и логирования.
 
-[![Changelog](https://shields.io)](./CHANGELOG.md)
+[[![Changelog](https://shields.io)](./CHANGELOG.md)
 [![License](https://shields.io)](./LICENSE)
-
-
+[![SLO](./docs/slo.md)](./docs/slo.md)
+[![Failure Modes](./docs/failure-modes.md)](./docs/failure-modes.md)
+[![Architecture](./docs/architecture.md)](./docs/architecture.md)
 ---
 
 ### ⚠️ Осознанные компромиссы и архитектурные ограничения (Trade-offs)
