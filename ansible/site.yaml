@@ -92,6 +92,44 @@
       throttle: 1
 
 # ==============================================================================
+# ЭТАП 1.6: Подключение воркеров к кластеру K3s
+# ==============================================================================
+- name: Подключение воркеров к кластеру K3s
+  hosts: k3s_workers
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Ожидание готовности SSH
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host | default(inventory_hostname) }}"
+        port: 22
+        state: started
+        delay: 5
+        timeout: 120
+
+    - name: Проверяем, установлен ли K3s на воркерах
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_worker_binary
+
+    - name: Чтение токена с первого мастера
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: k3s_worker_token
+      delegate_to: "{{ groups['k3s_masters'][0] }}"
+      become: true
+
+    - name: Подключение воркеров к кластеру
+      ansible.builtin.shell:
+        cmd: >
+          curl -sfL https://get.k3s.io | 
+          K3S_URL=https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443 
+          K3S_TOKEN={{ k3s_worker_token['content'] | b64decode | trim }} 
+          sh -
+      when: not k3s_worker_binary.stat.exists
+      throttle: 1
+
+# ==============================================================================
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig
 # ==============================================================================
 - name: Экспорт доступов из кластера K3s
@@ -158,8 +196,8 @@
             namespace: monitoring
           type: Opaque
           stringData:
-            bot_token: "{{ vault_telegram_bot_token }}"
-            chat_id: "{{ vault_telegram_chat_id }}"
+            bot_token: "{{ vault_TELEGRAM_BOT_TOKEN }}"
+            chat_id: "{{ vault_TELEGRAM_CHAT_ID }}"
 
     - name: Деплой ArgoCD Application для мониторинга
       kubernetes.core.k8s:

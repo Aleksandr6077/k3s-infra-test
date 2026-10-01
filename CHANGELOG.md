@@ -429,7 +429,7 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 - **Правило SG для API (6443)** — healthcheck-диапазоны Yandex (`198.18.235.0/24`, `198.18.248.0/24`).
  - **ArgoCD Application `monitoring`** — установка `kube-prometheus-stack` (Prometheus + Grafana + Alertmanager) через Helm
  - **Telegram-Alerting**
-
+ - **Play для воркеров в Ansible** - описание воркеров в `site` плейбуке.
 
 ### Изменено
 - **Nginx:** манифесты преобразованы в **Helm-чарт** с `checksum/config` для автоматического `Rolling Update`.
