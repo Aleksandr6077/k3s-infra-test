@@ -207,7 +207,7 @@ resource "yandex_compute_instance" "k3s_masters" {
 
   resources {
     cores         = 2
-    memory        = 2
+    memory        = 4
     core_fraction = 20
   }
   

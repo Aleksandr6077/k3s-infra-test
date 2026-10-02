@@ -150,7 +150,7 @@
   tasks:
     - name: Создание пространства имен для ArgoCD
       kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
         name: argocd
         api_version: v1
         kind: Namespace
@@ -158,7 +158,7 @@
 
     - name: Установка ArgoCD из официального манифеста (v3.5.1)
       kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
         src: "https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.1/manifests/install.yaml"
         namespace: argocd
@@ -172,13 +172,13 @@
 
     - name: Деплой ArgoCD Application для Nginx
       kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
         src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/nginx-app.yaml"
 
     - name: Создание namespace для мониторинга
       kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
         name: monitoring
         api_version: v1
         kind: Namespace
@@ -186,7 +186,7 @@
 
     - name: Создание Secret с Telegram токеном
       kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
         definition:
           apiVersion: v1
@@ -199,9 +199,24 @@
             bot_token: "{{ vault_TELEGRAM_BOT_TOKEN }}"
             chat_id: "{{ vault_TELEGRAM_CHAT_ID }}"
 
+    - name: Создание Secret с паролем Grafana
+      kubernetes.core.k8s:
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: grafana-admin
+            namespace: monitoring
+          type: Opaque
+          stringData:
+            admin-user: "{{ grafana_admin_user }}"
+            admin-password: "{{ vault_grafana_admin_password }}"
+
     - name: Деплой ArgoCD Application для мониторинга
       kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
         src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/monitoring-app.yaml"
 
@@ -216,7 +231,7 @@
   tasks:
     - name: Копируем Traefik HelmChartConfig
       kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/.kube/config"
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
         src: "{{ playbook_dir }}/../k8s/platform/traefik-config.yaml"
 

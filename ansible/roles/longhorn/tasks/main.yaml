@@ -37,7 +37,7 @@
     chart_version: "{{ longhorn_chart_version }}"
     release_namespace: "{{ longhorn_namespace }}"
     create_namespace: yes
-    kubeconfig: "{{ playbook_dir }}/.kube/config"
+    kubeconfig: "{{ playbook_dir }}/../.kube/config"
     values:
       persistence:
         defaultClassReplicaCount: "{{ longhorn_replica_count }}"
@@ -57,7 +57,10 @@
     label_selectors:
       - app = longhorn-ui
   register: longhorn_ui_pod
-  until: longhorn_ui_pod.resources | length > 0 and longhorn_ui_pod.resources[0].status.phase == "Running"
+  until: 
+    - longhorn_ui_pod.resources is defined
+    - longhorn_ui_pod.resources | length > 0
+    - longhorn_ui_pod.resources[0].status.phase == "Running"
   retries: 30
   delay: 10
   delegate_to: localhost

@@ -137,7 +137,7 @@ k3s-infra-test/
 │   │   ├── local_env/               # Настройка локального окружения разработчика
 │   │   └── longhorn/                # Установка Longhorn (HA-хранилище)
 │   ├── hosts.ini                    # Инвентарь (автогенерация при поднятии стенда)
-│   └── site.yaml                    # Главный плейбук (Provisioning, K3s, ArgoCD, Longhorn)
+│   └── site.yaml                    # Главный плейбук (Provisioning, K3s, ArgoCD, Longhorn, Monitoring)
 ├── k8s/
 │   ├── apps/
 │   │   └── nginx/                   # Helm-чарт приложения
@@ -154,14 +154,15 @@ k3s-infra-test/
 │   │           └── ingress.yaml     # Ingress (Traefik)
 │   ├── platform/
 │   │   ├── argocd-apps/
-│   │   │   └── nginx-app.yaml       # ArgoCD Application (GitOps-мост)
-│   │   └── traefik-config.yaml      # HelmChartConfig для фиксации NodePort
-│   ├── loki-values.yaml             # Настройки для Helm-чарта Grafana Loki
-│   └── mon-values.yaml              # Настройки для Helm-чарта Prometheus Operator
+│   │   │   ├── nginx-app.yaml       # ArgoCD Application (GitOps-мост)
+│   │   │   └── monitoring-app.yaml  # ArgoCD Application для kube-prometheus-stack
+│   │   ├── monitoring/
+│   │   │   └── values.yaml          # Настройки kube-prometheus-stack (Prometheus, Grafana, Alertmanager, Telegram)
+│   │   └── traefik-config.yaml      # HelmChartConfig
 ├── terraform/                       # IaC для Яндекс Облака
 │   ├── hosts.ini.tpl                # Шаблон для автогенерации инвентаря Ansible
 │   ├── main.tf                      # VPC, подсети, Security Groups, ВМ, NLB
-│   ├── outputs.tf                   # Вывод публичных IP и IP NLB
+│   ├── outputs.tf                   # Вывод IP
 │   ├── providers.tf                 # Настройка провайдера Яндекса
 │   └── variables.tf                 # Объявление переменных кластера
 ├── .pre-commit-config.yaml          # Хуки проверок (trivy etc.)
@@ -169,8 +170,6 @@ k3s-infra-test/
 ├── LICENSE                          # Лицензия проекта
 ├── Makefile                         # Скрипты автоматизации (make up, make down)
 └── README.md                        # Документация проекта
-
-
 ```
 
 ## ⚙️ Как это устроено:
@@ -200,45 +199,68 @@ k3s-infra-test/
 ---
 
 ### 2. Запуск приложения (`k8s/apps/nginx/`)
-Приложение декомпозировано на декларативные манифесты для обеспечения отказоустойчивости и безопасности:
 
-*   **pvc.yaml:** Выделяет постоянный диск на 1 Гб (`storageClassName: local-path`) для хранения статики.
-*   **deployment.yaml:** Запускает 2 реплики приложения под управлением non-root образа `nginxinc/nginx-unprivileged:1.25-alpine` (порт `8080`). Настроены лимиты ресурсов, `podAntiAffinity` против SPOF ноды и `preStop` хук для Graceful Shutdown.
-*   **service.yaml & ingress.yaml:** Внутренний балансировщик и правила маршрутизации Traefik для внешнего доступа по адресу `http://my-app.local`.
+Приложение упаковано в **Helm-чарт** для параметризации и переиспользования:
+
+- **`Chart.yaml`** — метаданные чарта.
+- **`values.yaml`** — параметры (образ, реплики, ресурсы, storage, service, ingress).
+- **`files/index.html`** — статический контент (вынесен из `values.yaml`).
+- **`templates/`** — шаблоны манифестов:
+  - `pvc.yaml` — постоянный диск на 1 ГБ (`storageClassName: local-path`).
+  - `deployment.yaml` — 2 реплики приложения под управлением non-root образа `nginxinc/nginx-unprivileged:1.25-alpine` (порт `8080`). Настроены лимиты ресурсов, `podAntiAffinity` против SPOF ноды и `preStop` хук для Graceful Shutdown.
+  - `configmap.yaml` — ConfigMap с `index.html` (монтируется в init-контейнер).
+  - `service.yaml` — внутренний балансировщик (ClusterIP).
+  - `ingress.yaml` — правила маршрутизации Traefik для внешнего доступа по адресу `http://my-app.local`.
+  - `_helpers.tpl` — шаблоны имён и меток.
 
 **Решение проблемы 403 Forbidden и изоляция прав:**
-При первом деплое пустой том PVC затирает дефолтную директорию Nginx, вызывая ошибку 403. Для её решения применен паттерн с **Init-контейнером**:
-1.  **Init-этап:** Временный контейнер на базе `alpine` монтирует PVC, генерирует `index.html` и принудительно меняет владельца файлов командой `chown -R 101:101 /data`. Это необходимо, так как init-контейнер работает под root, а основное приложение запущено в non-root режиме.
-2.  **Рантайм-этап:** После успешного завершения init-этапа, Kubernetes запускает основной контейнер Nginx. Благодаря общему UID (101), безопасный non-root процесс Nginx беспрепятственно считывает подготовленный файл.
 
-### 3. Мониторинг (Prometheus + Grafana)
- - Поставил стек `kube-prometheus-stack` через Helm. 
- - Настроил кастомный конфиг `mon-values.yaml`:
-* **Отключил тяжелый `node-exporter`** (сбор метрик самого железа хоста). Оставил только метрики самого Kubernetes. Отключено, так как в K3s по умолчанию нет прав на чтение `/proc` и `/sys` без дополнительной настройки SecurityContext.
-* **Безопасность учетных данных:** Все чувствительные данные, включая пароль администратора Grafana, вынесены из публичного репозитория, зашифрованы с помощью **Ansible Vault** и динамически подставляются в процессе деплоя.
+При первом деплое пустой том PVC затирает дефолтную директорию Nginx, вызывая ошибку 403. Для её решения применён паттерн с **Init-контейнером**:
+1. **Init-этап:** временный контейнер на базе `alpine` монтирует PVC, копирует `index.html` из ConfigMap. Это необходимо, так как init-контейнер работает под root, а основное приложение запущено в non-root режиме.
+2. **Рантайм-этап:** после успешного завершения init-этапа Kubernetes запускает основной контейнер Nginx. Благодаря общему UID (101), безопасный non-root процесс Nginx беспрепятственно считывает подготовленный файл.
 
-### 4. Сбор логов (Loki)
-* Поставил базу данных логов **Loki** в легком режиме `SingleBinary` (конфиг `loki-values.yaml`). Выбран режим SingleBinary для упрощения развертывания в изолированной среде (один контейнер вместо трех: loki, querier, distributor). В продакшене этот режим не рекомендуется из-за единой точки отказа.
+**Автоматический Rolling Update:**
+
+В `deployment.yaml` добавлена аннотация `checksum/config` — SHA256-хэш от рендеренного `configmap.yaml`. При изменении `files/index.html` → хэш меняется → `spec.template` обновляется → Kubernetes автоматически запускает **Rolling Update**. Раньше под приходилось удалять вручную.
+
+### 3. GitOps (ArgoCD)
+
+Приложения и платформенные компоненты управляются через **ArgoCD** (GitOps):
+- **`k8s/platform/argocd-apps/nginx-app.yaml`** — ArgoCD Application для Nginx (Helm-чарт).
+- **`k8s/platform/argocd-apps/monitoring-app.yaml`** — ArgoCD Application для `kube-prometheus-stack` (multi-source: Helm-чарт + values из Git).
+- **`k8s/platform/traefik-config.yaml`** — HelmChartConfig для фиксации NodePort Traefik (`30080`/`30443`).
+
+### 4. Мониторинг (Prometheus + Grafana + Alertmanager)
+
+- Стек `kube-prometheus-stack` ставится через **ArgoCD Application** (`monitoring-app.yaml`).
+- Кастомный конфиг — **`k8s/platform/monitoring/values.yaml`** (заменяет старый `mon-values.yaml`).
+- **Отключены тяжелые компоненты** (`kubeEtcd`, `kubeControllerManager`, `kubeScheduler`, `kubeProxy`) — не нужны на эфемерном стенде.
+- **Безопасность учётных данных:** все чувствительные данные (пароль Grafana, Telegram-токены) вынесены из публичного репозитория, зашифрованы через **Ansible Vault** и динамически подставляются в процессе деплоя.
+- **Telegram-нотификации:** Alertmanager отправляет алерты в Telegram (receiver `telegram_configs`, токены из Secret `alertmanager-telegram`).
+- **Alert rules:** `NodeDown`, `PodCrashLooping`, `HighCPU`.
+
+### 5. Сбор логов (Loki)
+
+- Loki **не установлен** (в техдолге).
+- Старый `loki-values.yaml` **удалён** (рудимент старого подхода).
+- При необходимости — создать отдельный ArgoCD Application (`loki-app.yaml`) и `values.yaml`.
 
 ## 🛡️ Локальная безопасность и валидация (Pre-commit)
-В проекте настроена автоматическая проверка кода перед коммитом с помощью pre-commit хуков.
-Подключенные хуки:
-* docker-compose-check
-* Trivy
+
+В проекте настроена автоматическая проверка кода перед коммитом:
+- `docker-compose-check` — валидация `docker-compose.yml`.
+- `Trivy` — сканирование секретов.
 
 ## ⚙️ Автоматизация и CI/CD
 
-В проекте реализован автоматический пайплайн статического анализа кода и безопасности (`.github/workflows/ci.yaml`), который триггерится на каждый `push` и `pull_request` в ветку `master`. Пайплайн оптимизирован по скорости и переведен на использование официальных легковесных образов.()
+Реализован пайплайн статического анализа кода и безопасности (`.github/workflows/ci.yaml`), триггерится на `push` и `pull_request` в `master`.
 
 ### 🔄 Этапы пайплайна:
-* **Linting & Syntax (yamllint):** Автоматическая проверка синтаксиса всех YAML-файлов (Ansible-роли, Kubernetes-манифесты) на соответствие стандартам форматирования.
-* **Secret Scanning (Gitleaks):** Глубокий аудит истории коммитов на предмет случайной утечки чувствительных данных (паролей, токенов Yandex Cloud, приватных ключей).
-* **IaC Security Scanner (Trivy):** Автоматический статический анализ (SAST) конфигурационных файлов OpenTofu (Terraform) и плейбуков Ansible на наличие небезопасных настроек и уязвимостей.
-* **K8s Best Practices (Kube-score):** линтинг манифестов на соответствие лучшим практикам безопасности (проверка non-root прав, лимитов ресурсов, конфигурации probe-проб и сетевых политик).
-* **Notifications (Telegram API):** Интеграция с Telegram-ботом для мгновенного алертинга команды о статусе сборки (успех/провал) с выводом автора и текста коммита.
-
-Если проверки пройдены успешно:
-🚀 git push ➡️ Отправка изменений в Repo.
+- **Linting & Syntax (yamllint):** проверка синтаксиса YAML-файлов (Ansible-роли, Kubernetes-манифесты).
+- **Secret Scanning (Gitleaks):** аудит истории коммитов на утечки чувствительных данных.
+- **IaC Security Scanner (Trivy):** статический анализ OpenTofu (Terraform) и Ansible.
+- **K8s Best Practices (Kube-score):** линтинг манифестов на best practices.
+- **Notifications (Telegram API):** алертинг о статусе сборки.
 
 ---
 
