@@ -203,4 +203,12 @@ bastion перенесён в `b`.
 **Owner**: @Aleksandr6077
 **Реальный инцидент**: да, на Этапе 1 (исправлено).
 
-### FM-9: TBA
+### FM-9: Degraded volume в Longhorn (2 реплики)
+**Триггер**: потеря одной из двух реплик (сеть, реклейм ноды, падение longhorn-manager)
+**Blast radius**: том становится `degraded`, при потере второй реплики — `faulted`. Запись блокируется.
+**Detection:** алерт `longhorn_volume_robustness{robustness="faulted"} == 1` (проверить точное имя метрики) `curl localhost:9500/metrics` на longhorn-manager).
+**Mitigation:** Replica count = 3 (требует 3 воркера) `replicaAutoBalance` + `node-down-policy` `dataLocality: best-effort` для ускорения
+**Storage Network НЕ решает split-brain** — изолирует трафик репликации, но не даёт кворум при потере реплики.
+**Важно:** Longhorn после восстановления связи сам синхронизирует отставшую реплику (Replica Rebuild). Потери данных нет, если жива хотя бы одна реплика.
+**Owner**: @Aleksandr6077
+**Реальный инцидент**: нет.
