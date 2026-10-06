@@ -1,4 +1,6 @@
 sa_key.json
+.yamllint.yml
+.commitlintrc.yml
 .ansible_vault_pass.txt
 .kube
 local-infra/haproxy/keepalived.conf

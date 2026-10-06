@@ -1,4 +1,7 @@
 repos:
+  # ============================================================
+  # ЛОКАЛЬНЫЕ ХУКИ
+  # ============================================================
   - repo: local
     hooks:
       - id: docker-compose-check
@@ -8,10 +11,49 @@ repos:
         files: ^docker-compose\.ya?ml$
         pass_filenames: false
 
-      - id: secret-grabber
-        name: Check for Hardcoded Secrets (Trivy)
-        entry: trivy fs --scanners secret --exit-code 1 .
+      - id: gitleaks
+        name: gitleaks (staged scan)
+        entry: bash -c 'BIN=/tmp/gitleaks; [ -x "$BIN" ] || curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" | tar xz -C /tmp; "$BIN" protect --staged --verbose --redact'
         language: system
+        files: .
         pass_filenames: false
 
+  # ============================================================
+  # БАЗОВЫЕ ФОРМАТИРОВАНИЯ
+  # ============================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
 
+  # ============================================================
+  # YAMLLINT
+  # ============================================================
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        args:
+          - --config-file=.yamllint.yml
+        files: \.(yaml|yml)$
+
+  # ============================================================
+  # COMMITLINT
+  # ============================================================
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.27.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies:
+          - '@commitlint/config-conventional'
+        args: ['--config', '.commitlintrc.yml']

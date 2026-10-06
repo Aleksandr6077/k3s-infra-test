@@ -7,6 +7,16 @@ on:
     branches: [ master ]
   workflow_dispatch:
 
+# Отменяем предыдущий запуск при новом пуше в ту же ветку
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Минимальные права — только чтение
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   validate_and_scan:
     runs-on: ubuntu-latest
@@ -15,42 +25,80 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # сканирует всю историю
 
-      # 1. Быстрая валидация YAML синтаксиса через готовый экшен (без простыни Python-кода)
+      # ============================================================
+      # 1. ВАЛИДАЦИЯ YAML
+      # ============================================================
       - name: Validate YAML Syntax
         uses: ibiqlik/action-yamllint@v3
         with:
           file_or_dir: '.'
           config_data: "{extends: relaxed, rules: {line-length: disable}}"
 
-      # 2. Сканирование секретов через официальный легковесный экшен GitLeaks (без go build!)
+      # ============================================================
+      # 2. COMMITLINT — проверка сообщений коммитов
+      # ============================================================
+      - name: Validate Commit Messages
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: '.commitlintrc.yml'
+
+      # ============================================================
+      # 3. GITLEAKS — поиск секретов
+      # ============================================================
       - name: Run GitLeaks Scan
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      # 3. Реальный запуск Trivy для сканирования на уязвимости
-      - name: Run Trivy Vulnerability Scanner (IaC)
-        uses: aquasecurity/trivy-action@master
+      # ============================================================
+      # 4. TRIVY — — IaC
+      # ============================================================
+      - name: Run Trivy IaC Scan
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: 'config'
           hide-progress: false
           format: 'table'
-          exit-code: '1' # Упасть, если найдены критические уязвимости
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
 
-      # 4. Реальный запуск Kube-score для анализа манифестов k8s на Best Practices
-      - name: Run Kube-score Linting
-        run: |
-          echo "→ Скачиваем kube-score..."
-          curl -sLO https://github.com/zegl/kube-score/releases/download/v1.18.0/kube-score_1.18.0_linux_amd64.tar.gz
-          tar -xzf kube-score_1.18.0_linux_amd64.tar.gz
-          
-          echo "→ Анализируем манифесты в k8s/apps/..."
-          ./kube-score score k8s/apps/nginx/*.yaml --ignore-container-cpu-limit
+      # ============================================================
+      # 5. TRIVY — образы (nginx, backend, CNPG, longhorn)
+      # ============================================================
+      - name: Run Trivy Image Scan (nginx)
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: 'nginx:1.27-alpine'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
 
-      # 5. Исправленное уведомление в Telegram при УСПЕХЕ
+      # Раскомментировать, для своих образов:
+      # - name: Run Trivy Image Scan (backend)
+      #   uses: aquasecurity/trivy-action@0.36.0
+      #   with:
+      #     image-ref: 'ghcr.io/<you>/fastapi-backend:latest'
+      #     format: 'table'
+      #     exit-code: '1'
+      #     severity: 'CRITICAL,HIGH'
+      #     ignore-unfixed: true
+
+      # ============================================================
+      # 6. KUBE-SCORE — best practices для k8s-манифестов
+      # ============================================================
+      - name: Run kube-score
+        run: |
+          curl -sSL https://github.com/zegl/kube-score/releases/download/v1.19.0/kube-score_1.19.0_linux_amd64.tar.gz \
+            | tar -xz -C /usr/local/bin
+          kube-score score k8s/ --output-format ci --exit-one-on-warning
+
+      # ============================================================
+      # 7. УВЕДОМЛЕНИЯ В TELEGRAM
+      # ============================================================
       - name: Telegram Notification (Success)
         if: success()
         env:
@@ -58,44 +106,20 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           COMMIT_MSG=$(git log -1 --pretty=format:"%s" || echo "New commit")
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-          -d chat_id="${TELEGRAM_CHAT_ID}" \
-          -d parse_mode="HTML" \
-          -d text="✅ <b>Пайплайн k3s-infra-test успешно пройден!</b>%0A<b>Коммит:</b> ${COMMIT_MSG}%0A<b>Автор:</b> ${{ github.actor }}"
+          curl -sf -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="✅ <b>Пайплайн k3s-infra-test успешно пройден!</b>%0A<b>Коммит:</b> ${COMMIT_MSG}%0A<b>Автор:</b> ${{ github.actor }}" \
+            > /dev/null
 
-      # 6. Исправленное уведомление в Telegram при ОШИБКЕ
       - name: Telegram Notification (Failure)
         if: failure()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-          -d chat_id="${TELEGRAM_CHAT_ID}" \
-          -d parse_mode="HTML" \
-          -d text="❌ <b>Пайплайн k3s-infra-test ЗАВАЛЕН!</b>%0AПроверьте логи сборки безопасности.%0A<b>Автор коммита:</b> ${{ github.actor }}"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+          curl -sf -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="❌ <b>Пайплайн k3s-infra-test ЗАВАЛЕН!</b>%0AПроверьте логи сборки безопасности.%0A<b>Автор коммита:</b> ${{ github.actor }}" \
+            > /dev/null

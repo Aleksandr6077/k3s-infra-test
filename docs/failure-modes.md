@@ -15,14 +15,14 @@
 ### FM-1: Preemption одного master
 
 **Триггер**: Yandex отзывает preemptible ВМ (capacity, maintenance).
-**Blast radius**: 1 из 3 master недоступен. Кворум есть (2/3), 
+**Blast radius**: 1 из 3 master недоступен. Кворум есть (2/3),
 API работает. Нагрузка на оставшиеся 2 растёт.
-**Detection**: 
+**Detection**:
 - Alert `up{job="kube-apiserver"} == 0` (5 min)
 - Yandex Monitoring: instance status = STOPPED
 **Mitigation**:
 1. Проверить `kubectl get nodes` — нода NotReady.
-2. `kubectl drain <node> --ignore-daemonsets --delete-emptydir-data` — 
+2. `kubectl drain <node> --ignore-daemonsets --delete-emptydir-data` —
    если ещё доступна.
 3. Если preempted жёстко — нода просто исчезает, drain не нужен.
 **Recovery**:
@@ -41,9 +41,9 @@ API работает. Нагрузка на оставшиеся 2 растёт.
 ### FM-2: Preemption двух masters одновременно
 
 **Триггер**: Yandex отзывает две preemptible ВМ в окне < 5 мин.
-**Blast radius**: **Кворум потерян**. API недоступен. Кластер 
+**Blast radius**: **Кворум потерян**. API недоступен. Кластер
 переходит в read-only (kubelet работает, но scheduler/apiserver — нет).
-**Detection**: 
+**Detection**:
 - Alert `kube_pod_status_ready{namespace="kube-system"} < 2` (critical)
 - kubectl таймаутит.
 **Mitigation**:
@@ -66,10 +66,10 @@ API работает. Нагрузка на оставшиеся 2 растёт.
 
 ### FM-3: Bastion preempted в момент деплоя
 
-**Триггер**: bastion отозван во время `make ansible-deploy` или 
+**Триггер**: bastion отозван во время `make ansible-deploy` или
 активной SSH-сессии.
 **Blast radius**: CI падает, kubectl отваливается, Ansible timeout.
-**Detection**: 
+**Detection**:
 - `make ansible-deploy` fail: `Timeout when waiting for 22`.
 - `kubectl` — connection refused на 6443.
 **Mitigation**:
@@ -90,7 +90,7 @@ API работает. Нагрузка на оставшиеся 2 растёт.
 ### FM-4: Отказ зоны `ru-central1-a`
 
 **Триггер**: сбой зоны Yandex (электричество, сеть, maintenance).
-**Blast radius**: 
+**Blast radius**:
 - -1 master (a) → кворум 2/3 сохраняется.
 - -1 worker (a) → Longhorn теряет 1 из 2 реплик.
 - Bastion не в a — хорошо.
@@ -107,7 +107,7 @@ API работает. Нагрузка на оставшиеся 2 растёт.
 - Уже multi-zonal.
 - Для прода: 3+ реплики Longhorn (сейчас 2).
 **Owner**: @Aleksandr6077
-**Реальный инцидент**: да, 2026-XX — зона `a` была недоступна, 
+**Реальный инцидент**: да, 2026-XX — зона `a` была недоступна,
 bastion перенесён в `b`.
 
 ---
@@ -115,10 +115,10 @@ bastion перенесён в `b`.
 ### FM-5: Потеря PVC `local-path` (Loki / Prometheus)
 
 **Триггер**: под удалён, нода пересоздана, PVC привязан к исчезнувшей ноде.
-**Blast radius**: 
+**Blast radius**:
 - Loki: вся история логов потеряна.
 - Prometheus: метрики за `retention: 1d` потеряны.
-**Detection**: 
+**Detection**:
 - Pod в `Pending` → `FailedScheduling`.
 - Grafana: no data.
 **Mitigation**:
@@ -138,10 +138,10 @@ bastion перенесён в `b`.
 
 ### FM-6: Утечка `sa_key.json`
 
-**Триггер**: файл попал в коммит, либо `make` передал его в env 
+**Триггер**: файл попал в коммит, либо `make` передал его в env
 и он утёк в логи CI.
-**Blast radius**: 
-- Злоумышленник может: читать S3 state, читать/менять VPC, 
+**Blast radius**:
+- Злоумышленник может: читать S3 state, читать/менять VPC,
   останавливать ВМ, читать Object Storage.
 **Detection**:
 - Gitleaks в CI (сработает только если файл в коммите).
@@ -163,9 +163,9 @@ bastion перенесён в `b`.
 
 ### FM-7: ArgoCD рассинхронизирован (drift)
 
-**Триггер**: кто-то сделал `kubectl edit` руками. Или `Replace: true` 
+**Триггер**: кто-то сделал `kubectl edit` руками. Или `Replace: true`
 снёс ресурс, а Git не обновился.
-**Blast radius**: 
+**Blast radius**:
 - Приложение работает, но не воспроизводится.
 - Следующий `sync` может **сломать** работающий прод.
 **Detection**:
@@ -173,10 +173,10 @@ bastion перенесён в `b`.
 - Alert: `argocd_app_info{sync_status="OutOfSync"} == 1`.
 **Mitigation**:
 1. `argocd app diff <app>` — увидеть расхождение.
-2. Решить: **вернуть из Git** (`argocd app sync`) или 
+2. Решить: **вернуть из Git** (`argocd app sync`) или
    **зафиксировать в Git** (`kubectl get -o yaml > manifest`).
 **Recovery**:
-- `selfHeal: true` (у тебя есть) — ArgoCD сам вернёт.
+- `selfHeal: true` (у меня есть) — ArgoCD сам вернёт.
 - Но если изменения **легитимные** — надо в Git.
 **Prevention**:
 - Запрет `kubectl edit` (RBAC + политика).
