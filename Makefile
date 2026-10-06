@@ -121,3 +121,18 @@ taint:
 
 testgitops:
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu output -raw k3s_ingress_nlb_ip
+
+## clean-s3: Очистка S3-бакетов (бэкапы PG, tfstate)
+clean-s3:
+	@echo "$(YELLOW)Очистка S3-бакетов...$(NC)"
+	@read -p "Уверен? [y/N] " ans && [ "$$ans" = "y" ] || exit 1
+	yc storage s3api rm --bucket <bucket-name> --recursive || true
+
+## tunnel-kill: Убить SSH-туннель
+tunnel-kill:
+	-@pkill -f "ssh.*-L 6443" 2>/dev/null || true
+	@echo "$(GREEN)Туннель убит$(NC)"
+
+## kubeconfig: Показать путь к kubeconfig
+kubeconfig:
+	@echo "$$HOME/pet2/.kube/config"

@@ -300,14 +300,15 @@ k3s-infra-test/
 - [  ] **Секреты**: Внедрение Mozilla SOPS или HashiCorp Vault
 - [✅] ~~Убрать заглушки на этапе работы - раннера(Ci.yaml).~~ 
 - [✅] ~~Декомпозировать монолитный манифест app.yaml на отдельные сущности. Упаковать приложение в кастомный Helm-чарт для параметризации конфигураций под разные окружения (Dev/Stage/Prod).~~
-- [  ] Добавить `🔔 уведомление` -  **`Alerting`** — настроить оповещения `Alertmanager → Telegram/Slack/Email`
+- [  ] **Добавить 🔔 уведомление -  **`Alerting`** — настроить оповещения `Alertmanager → Telegram/Slack/Email`
 - [  ] Развернуть и настроить локальный DNS-сервер (CoreDNS или dnsmasq) с поддержкой Wildcard-записей (*.kube.local). Это позволит автоматизировать резолв доменов для новых микросервисов на машинах разработчиков и отказаться от ручной подмены HTTP-заголовков через curl.
 - [✅] ~~Внедрение Longhorn или Rook-Ceph в качестве `отказоустойчивого CSI-провайдера` для обеспечения высокой доступности (HA) данных при миграции подов между нодами кластера.~~
-- [  ] Развернуть `Actions Runner Controller (ARC)` в кластере K3s — для `CI/CD`
+- [  ] **Развернуть `Actions Runner Controller (ARC)`** в кластере K3s — для `CI/CD`
  
-- [  ] ArgoCD Application для Longhorn — управлять Longhorn через ArgoCD (GitOps), а не через Ansible. В продакшне — обязательно.
+- [  ] **ArgoCD Application для Longhorn** — управлять Longhorn через ArgoCD (GitOps), а не через Ansible. В продакшне — обязательно.
 
 - [  ] **Мультизона (Kubernetes)** — расширить кластер на несколько зон (инфраструктура готова, но K3s не проставляет метки `topology.kubernetes.io/zone без Yandex CCM`)
+
 - **P0** [  ] **(`PostgreSQL + App + Backup`)**: 
   - Приложение FastAPI, пишущее в PostgreSQL
   - PostgreSQL через CloudNativePG (CNPG)

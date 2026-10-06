@@ -476,7 +476,7 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 
 ## 🚦 Текущий статус проекта
 
-### Проект находится в облачной инфре (MultiZonal HA) Yandex Cloud.
+### Проект находится в облачной инфре (MultiZonal*** HA) Yandex Cloud.
 
  - Приложение `my-nginx` работает в `default` namespace, 1 под в статусе `Running`.
  - ArgoCD показывает статус `Synced` и `Healthy`.
