@@ -2,11 +2,12 @@
 
 Проектирование, автоматизация развертывания (IaC OpenTofu/Ansible) и обеспечение высокой доступности распределенного кластера K3s в облачной инфраструктуре Yandex Cloud с интегрированным стеком мониторинга и логирования.
 
-[[![Changelog](https://shields.io)](./CHANGELOG.md)
+[![Changelog](https://shields.io)](./CHANGELOG.md)
 [![License](https://shields.io)](./LICENSE)
 [![SLO](./docs/slo.md)](./docs/slo.md)
 [![Failure Modes](./docs/failure-modes.md)](./docs/failure-modes.md)
 [![Architecture](./docs/architecture.md)](./docs/architecture.md)
+[![tech-debt](./docs/tech-debt.md)](./docs/tech-debt.md)
 ---
 
 ### ⚠️ Осознанные компромиссы и архитектурные ограничения (Trade-offs)
@@ -302,6 +303,8 @@ k3s-infra-test/
 
 ## 🎯 Что нужно доработать до уровня Production (Технический долг)
 Данный проект — это локальный self - hosted для обкатки стека в изолированной среде. Для деплоя в реальный продакшен необходимо закрыть следующие задачи:
+
+👉 Подробный аудит инфраструктурных рисков, узких мест и путей их устранения читайте в [![tech-debt](./docs/tech-debt.md)](./docs/tech-debt.md)
 
 - [  ] **Git-flow (feature, fix, chore ветки)** : `master` — только рабочее. Тесты коммитим в ветках. Зачем? Прямой push в master - антипаттерн.
 - [✅ ] ~~**Внедрить полноценный GitOps-подход**: Установить в кластер ArgoCD для декларативного деплоя и синхронизации состояния кластера с GitHub | GitVetse.~~
