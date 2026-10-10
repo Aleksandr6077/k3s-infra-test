@@ -1,0 +1,84 @@
+# ==============================================================================
+# Grafana Alloy — сбор логов подов и отправка в Loki
+# Чарт: grafana/alloy
+# Docs: https://grafana.com/docs/alloy/latest/
+# ==============================================================================
+
+alloy:
+  # Монтируем /var/log с ноды — Alloy читает логи контейнеров
+  mounts:
+    varlog: true
+
+  # TODO(решение): какие namespace собирать?
+  # Сейчас — все. Потом ужать фильтром, если Loki захлёбывается.
+  configMap:
+    content: |
+      logging {
+        level  = "info"
+        format = "logfmt"
+      }
+
+      // Обнаружение подов через Kubernetes API
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Переразметка: k8s-метаданные → лейблы Loki
+      // Эти же лейблы должны быть в Prometheus, чтобы работала связка
+      // derived fields (pod/namespace/container).
+      discovery.relabel "kube_relabel" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label  = "app"
+        }
+
+        // TODO(решение): фильтр namespace.
+        // Раскомментировать, если Loki захлёбывается от kube-system.
+        // rule {
+        //   source_labels = ["__meta_kubernetes_namespace"]
+        //   regex         = "default|monitoring|logging"
+        //   action        = "keep"
+        // }
+      }
+
+      // Чтение логов из Kubernetes API
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.kube_relabel.output
+        forward_to = [loki.write.local.receiver]
+      }
+
+      // Отправка в Loki через gateway
+      loki.write "local" {
+        endpoint {
+          url = "http://loki-gateway.logging.svc.cluster.local:80/loki/api/v1/push"
+        }
+      }
+
+  # TODO(решение): зависит от A/B/C по воркерам.
+  # Alloy DaemonSet — по одному поду на ноду.
+  # ~128-256 МБ на ноду × N нод.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ServiceMonitor для Prometheus — метрики самого Alloy
+serviceMonitor:
+  enabled: true

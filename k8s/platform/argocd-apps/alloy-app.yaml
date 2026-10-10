@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: alloy
+    # TODO(применение): прибить к конкретной версии.
+    # Проверить: helm search repo grafana/alloy --versions
+    targetRevision: 1.5.0
+    helm:
+      valueFiles:
+        - values-alloy.yaml
+      # См. комментарий в loki-app.yaml про multi-source.
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
