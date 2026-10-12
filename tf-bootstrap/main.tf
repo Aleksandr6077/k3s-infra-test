@@ -11,13 +11,13 @@ terraform {
 # Настройка провайдера Yandex Cloud
 provider "yandex" {
   # Токен передаем через переменную окружения TF_VAR_yc_token в терминале
-  folder_id = var.yc_folder_id 
+  folder_id = var.yc_folder_id
 }
 
 # Описание переменной
 variable "yc_folder_id" {
   type        = string
-  description = "b1g3t25pff7pdao6upbs"
+  description = "Yandex Cloud folder ID"
 }
 
 # Создаем саму базу данных YDB (Serverless)
@@ -25,9 +25,9 @@ resource "yandex_ydb_database_serverless" "tf_state_lock" {
   name      = "terraform-state-lock-db"
   folder_id = var.yc_folder_id
 
-  # ХАРДКОРНАЯ ЗАЩИТА: OpenTofu физически откажется удалять эту базу, 
+  # ХАРДКОРНАЯ ЗАЩИТА: OpenTofu физически откажется удалять эту базу,
   # даже если запустишь тут destroy
-  deletion_protection = true 
+  deletion_protection = true
 }
 
 # Выводим Эндпоинт базы данных в аутпут

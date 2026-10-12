@@ -105,7 +105,7 @@
 * **Логирование**: Grafana Loki (установка через Helm)
 * **Эфемерный стенд и S3**: Бакет Object Storage живёт отдельно от стенда и **не удаляется** при `make down`.
 
-**Multi-Zonal***** Инфраструктурная мультизональность (3 зоны для мастеров). Логическая мультизональность в Kubernetes (метки зон) — в техдолге (требует Yandex CCM)
+**Multi-Zonal** Инфраструктурная мультизональность (3 зоны для мастеров). Логическая мультизональность в Kubernetes (метки зон) — в техдолге (требует Yandex CCM)
 
 ### Сетевая архитектура
 
@@ -141,16 +141,29 @@
 
 ```text
 k3s-infra-test/
-├── .gitverse/.github/
+├── .github/
 │   └── workflows/
-│       └── ci.yaml                  # CI/CD пайплайн (GitHub/GitVerse)
+│       └── ci.yaml                  # CI/CD (GitHub Actions)
+├── .gitverse/
+│   └── workflows/
+│       └── ci.yaml                  # CI/CD (GitVerse)
 ├── ansible/
 │   ├── roles/
 │   │   ├── k3s_kubeconfig/          # Копирование и локальный импорт kubeconfig
 │   │   ├── local_env/               # Настройка локального окружения разработчика
-│   │   └── longhorn/                # Установка Longhorn (HA-хранилище)
-│   ├── hosts.ini                    # Инвентарь (автогенерация при поднятии стенда)
+│   │   └── longhorn/                # Установка Longhorn
+│   │       ├── defaults/
+│   │       └── tasks/
 │   └── site.yaml                    # Главный плейбук (Provisioning, K3s, ArgoCD, Longhorn, Monitoring)
+├── docs/
+│   ├── architecture.md              # Описание архитектуры стенда
+│   ├── failure-modes.md             # Анализ отказов и сценариев деградации
+│   ├── slo.md                       # SLO/SLI для сервисов стенда
+│   └── tech-debt.md                 # Аудит: чек-лист задач (помимо тех что есть в README и Changelog)
+├── group_vars/
+│   └── all/
+│       ├── vars.yml                 # Переменные Ansible
+│       └── vault.yml                # секреты
 ├── k8s/
 │   ├── apps/
 │   │   └── nginx/                   # Helm-чарт приложения
@@ -161,38 +174,46 @@ k3s-infra-test/
 │   │       └── templates/
 │   │           ├── _helpers.tpl     # Шаблоны имён и меток
 │   │           ├── configmap.yaml   # ConfigMap с index.html
-│   │           ├── deployment.yaml  # Deployment (с checksum/config)
-│   │           ├── service.yaml     # Service (ClusterIP)
-│   │           ├── pvc.yaml         # PersistentVolumeClaim
-│   │           └── ingress.yaml     # Ingress (Traefik)
-│   ├── platform/
-│   │   ├── argocd-apps/
-│   │   │   ├── nginx-app.yaml       # ArgoCD Application (GitOps-мост)
-│   │   │   └── monitoring-app.yaml  # ArgoCD Application для kube-prometheus-stack
-│   │   ├── monitoring/
-│   │   │   └── values.yaml          # Настройки kube-prometheus-stack (Prometheus, Grafana, Alertmanager, Telegram)
-│   │   └── traefik-config.yaml      # HelmChartConfig
-├── terraform/                       # IaC для Яндекс Облака
+│   │           ├── deployment.yaml  # Deployment
+│   │           ├── service.yaml
+│   │           ├── pvc.yaml
+│   │           └── ingress.yaml
+│   └── platform/
+│       ├── argocd-apps/
+│       │   ├── nginx-app.yaml       # Application nginx
+│       │   ├── monitoring-app.yaml  # Application nginx kube-prometheus-stack (скелет)
+│       │   ├── loki-app.yaml        # Application для Loki (скелет)
+│       │   └── alloy-app.yaml       # Application для Alloy (скелет)
+│       ├── monitoring/
+│       │   └── values.yaml          # Настройки kube-prometheus-stack (Prometheus, Grafana, Alertmanager, Telegram)
+│       ├── logging/
+│       │   ├── values-loki.yaml     # Настройки Loki (SingleBinary, файловое хранилище)
+│       │   └── values-alloy.yaml    # Настройки Alloy (логирование)
+│       └── traefik-config.yaml      # HelmChartConfig
+├── scripts/
+│   └── tunnel.sh                    # поднимает SSH-туннель
+├── terraform/
 │   ├── hosts.ini.tpl                # Шаблон для автогенерации инвентаря Ansible
 │   ├── main.tf                      # VPC, подсети, Security Groups, ВМ, NLB
 │   ├── outputs.tf                   # Вывод IP
 │   ├── providers.tf                 # Настройка провайдера Яндекса
 │   └── variables.tf                 # Объявление переменных кластера
-├── .pre-commit-config.yaml          # Хуки проверок (trivy etc.)
+├── tf-bootstrap/                    # Bootstrap: создание YDB для S3-бэкенда OpenTofu (одноразово)
+    └── main.tf                      # yandex_ydb_database + deletion_protection
+├── ansible.cfg                      # Конфигурация Ansible
 ├── CHANGELOG.md                     # История изменений проекта
-├── LICENSE                          # Лицензия проекта
 ├── Makefile                         # Скрипты автоматизации (make up, make down)
 └── README.md                        # Документация проекта
 ```
 
 ## ⚙️ Как это устроено:
-### Описание доступа к сервисам с управляющего хоста(WSL2):
-### Доступ к сервисам и маршрутизация трафика
+### Описание доступа к сервисам с управляющего хоста (WSL2):
 
-* **Балансировка Control Plane (L4):** Внешний балансировщик Yandex Network Load Balancer распределяет TCP-трафик на порт `6443` между тремя мастер-нодами кластера, обеспечивая внутризональный (Zonal) доступ к Kubernetes API со стороны хост-машины (Windows).
-* **Локальная отладка и диагностика (Port Forwarding):** Для изоляции веб-интерфейсов инфраструктуры (например, Grafana в namespace `monitoring`) и работы в обход публичных слоев маршрутизации используется прямое L4-пробронирование портов через команду `kubectl port-forward`. Это исключает необходимость ручной правки DNS/hosts на хосте и обеспечивает прямой защищенный туннель к сервисам.
-* **Архитектура публикации приложений (L7 Ingress):** Манифесты содержат декларативное описание правил Ingress для контроллера Nginx (например, домен `my-app.local`), подготавливая архитектуру приложений к бесшовному переходу на полноценную внешнюю L7-маршрутизацию в будущем.
-* **Эфемерность и борьба с дрейфом (Configuration Drift):** Для экономии ресурсов и исключения конфигурационного дрейфа вся инфраструктура спроектирована как эфемерная (Ephemeral). Кластер разворачивается строго под рабочую сессию с помощью `make up`(нарезка виртуалок диски и тд) `make ansible-deploy` (накатка мониторинга и кубера) и полностью уничтожается командой `make down` по её окончании.
+* **Доступ к Kubernetes API (через SSH-туннель):** API-сервер (6443) не опубликован в интернет. Доступ с хост-машины — через SSH-туннель до bastion, который проксирует трафик на одну из мастер-нод.
+
+* **Локальная отладка и диагностика (Port Forwarding):** Для доступа к веб-интерфейсам инфраструктуры и отладки без публикации их через `Ingress` используется `kubectl port-forward`. Не для production — инструмент для локальной отладки; Это позволяет работать с сервисами на localhost:<port> без правки `DNS/hosts`.
+
+* **Эфемерность и борьба с дрейфом:** Для экономии ресурсов и исключения конфигурационного дрейфа вся инфраструктура спроектирована как эфемерная (Ephemeral). Кластер разворачивается строго под рабочую сессию с помощью `make up`(нарезка виртуалок диски и тд) `make ansible-deploy` (отрабока плейбука) и полностью уничтожается командой `make down`.
 
 ## Рабочий процесс (Как ведется работа над проектом)
 
@@ -213,7 +234,7 @@ k3s-infra-test/
    ```
 
 2. **Конфигурация кластера (Ansible):**
-   Настроить MultiZonal-кластер k3s на развернутых нодах, автоматически импортировать доступы (`kubeconfig`)
+   Настроить кластер k3s на развернутых нодах, автоматически импортировать доступы (`kubeconfig`)
 
    ```bash
    make ansible-deploy
@@ -236,24 +257,15 @@ k3s-infra-test/
   - `ingress.yaml` — правила маршрутизации Traefik для внешнего доступа по адресу `http://my-app.local`.
   - `_helpers.tpl` — шаблоны имён и меток.
 
-**Решение проблемы 403 Forbidden и изоляция прав:**
 
-При первом деплое пустой том PVC затирает дефолтную директорию Nginx, вызывая ошибку 403. Для её решения применён паттерн с **Init-контейнером**:
-1. **Init-этап:** временный контейнер на базе `alpine` монтирует PVC, копирует `index.html` из ConfigMap. Это необходимо, так как init-контейнер работает под root, а основное приложение запущено в non-root режиме.
-2. **Рантайм-этап:** после успешного завершения init-этапа Kubernetes запускает основной контейнер Nginx. Благодаря общему UID (101), безопасный non-root процесс Nginx беспрепятственно считывает подготовленный файл.
+### 3. GitOps
 
-**Автоматический Rolling Update:**
-
-В `deployment.yaml` добавлена аннотация `checksum/config` — SHA256-хэш от рендеренного `configmap.yaml`. При изменении `files/index.html` → хэш меняется → `spec.template` обновляется → Kubernetes автоматически запускает **Rolling Update**. Раньше под приходилось удалять вручную.
-
-### 3. GitOps (ArgoCD)
-
-Приложения и платформенные компоненты управляются через **ArgoCD** (GitOps):
+Приложения и платформенные компоненты управляются через **ArgoCD** :
 - **`k8s/platform/argocd-apps/nginx-app.yaml`** — ArgoCD Application для Nginx (Helm-чарт).
 - **`k8s/platform/argocd-apps/monitoring-app.yaml`** — ArgoCD Application для `kube-prometheus-stack` (Helm-чарт)
 - **`k8s/platform/traefik-config.yaml`** — HelmChartConfig для фиксации NodePort Traefik (`30080`/`30443`).
 
-### 4. Мониторинг (Prometheus + Grafana + Alertmanager)
+### 4. Мониторинг
 
 - Стек `kube-prometheus-stack` ставится через **ArgoCD Application** (`monitoring-app.yaml`).
 - Кастомный конфиг — **`k8s/platform/monitoring/values.yaml`** (заменяет старый `mon-values.yaml`).
@@ -262,21 +274,13 @@ k3s-infra-test/
 - **Telegram-нотификации:** Alertmanager отправляет алерты в Telegram (receiver `telegram_configs`, токены из Secret `alertmanager-telegram`).
 - **Alert rules:** `NodeDown`, `PodCrashLooping`, `HighCPU`.
 
-### 5. Сбор логов (Loki)
+### 5. 🛡️ Локальная безопасность и валидация (Pre-commit)
 
-- Loki **не установлен** (в техдолге).
-- Старый `loki-values.yaml` **удалён** (рудимент старого подхода).
-- При необходимости — создать отдельный ArgoCD Application (`loki-app.yaml`) и `values.yaml`.
+В проекте настроена автоматическая проверка кода перед коммитом(`.pre-commit-config.yaml`)
 
-## 🛡️ Локальная безопасность и валидация (Pre-commit)
+### 6. ⚙️ Автоматизация и CI/CD
 
-В проекте настроена автоматическая проверка кода перед коммитом:
-- `docker-compose-check` — валидация `docker-compose.yml`.
-- `Trivy` — сканирование секретов.
-
-## ⚙️ Автоматизация и CI/CD
-
-Реализован пайплайн статического анализа кода и безопасности (`.github/workflows/ci.yaml`), триггерится на `push` и `pull_request` в `master`.
+Реализован пайплайн статического анализа кода и безопасности (`/workflows/ci.yaml`), триггерится на `push` и `pull_request` в `master`.
 
 ### 🔄 Этапы пайплайна:
 - **Linting & Syntax (yamllint):** проверка синтаксиса YAML-файлов (Ansible-роли, Kubernetes-манифесты).
@@ -286,19 +290,6 @@ k3s-infra-test/
 - **Notifications (Telegram API):** алертинг о статусе сборки.
 
 ---
-
-## 🔍 Верификация и устранение неполадок
-
-*   **Локальная проверка Ingress (L7)**: Чтобы проверить ресурсы Ingress без изменения системного DNS или локального файла hosts, был выполнен локальный HTTP-запрос через curl с принудительной установкой заголовка Host.
-    ```bash
-    curl -H "Host: my-app.local" http://127.0.0.1:80
-    ```
-
-*   **Безопасный доступ к мониторингу (Grafana)**: Чтобы безопасно открыть веб-интерфейс Grafana и не подвергать стек мониторинга рискам из публичного интернета, было настроено перенаправление портов (port forwarding) напрямую на сервис кластера:
-    ```bash
-    kubectl port-forward -n monitoring svc/kube-prom-grafana 8080:80
-    ```
-    После запуска туннеля дашборды и логи Grafana становятся доступны локально по адресу `http://localhost:8080`.
 
 
 ## 🎯 Что нужно доработать до уровня Production (Технический долг)

@@ -24,8 +24,7 @@ echo "Bastion: $BASTION_IP"
 echo "Master:  $MASTER_IP"
 
 # Убиваем старые туннели
-pkill -f "ssh.*6443" 2>/dev/null || true
-sleep 1
+pkill -f "ssh.*-L 6443:127.0.0.1:6443" 2>/dev/null || true
 
 # Запускаем туннель в фоне
 ssh -o StrictHostKeyChecking=no \
@@ -40,7 +39,7 @@ ssh -o StrictHostKeyChecking=no \
 sleep 2
 
 # Проверяем
-if sudo ss -tlnp 2>/dev/null | grep -q 6443; then
+if ss -tlnp 2>/dev/null | grep -q 6443; then
     echo "✅ Tunnel is up on 127.0.0.1:6443"
 else
     echo "❌ Tunnel failed"
