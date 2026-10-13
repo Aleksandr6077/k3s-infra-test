@@ -49,6 +49,9 @@ ansible-deploy: tunnel
 tunnel:
 	@bash scripts/tunnel.sh $(ANSIBLE_DIR)/hosts.ini
 
+tunnel-force:
+	@bash scripts/tunnel.sh $(ANSIBLE_DIR)/hosts.ini --force
+
 # =============================================================================
 # ОСНОВНЫЕ ТАРГЕТЫ УПРАВЛЕНИЯ СТЕНДОМ (YANDEX CLOUD)
 # ==============================================================================
@@ -97,7 +100,7 @@ down:
 	@echo "$(RED)ВНИМАНИЕ! Это действие полностью уничтожит всю облачную инфраструктуру!$(NC)"
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu destroy -auto-approve
 	@echo "$(GREEN)====> Облачный стенд полностью уничтожен. <====$(NC)"
-	
+
 ## recreate: Быстрое и безопасное пересоздание инфраструктуры (down + up)
 recreate:
 	$(MAKE) down && $(MAKE) up
