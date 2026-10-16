@@ -38,7 +38,7 @@
     - name: Инициализация первого мастера K3s
       ansible.builtin.shell:
         cmd: >
-          curl -sfL https://get.k3s.io | sh -s - server 
+          curl -sfL https://get.k3s.io | sh -s - server
           --cluster-init
           --node-ip={{ ansible_default_ipv4.address }}
       when:
@@ -82,8 +82,8 @@
     - name: Подключение остальных мастеров к кворуму кластера
       ansible.builtin.shell:
         cmd: >
-          curl -sfL https://get.k3s.io | sh -s - server 
-          --server https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443 
+          curl -sfL https://get.k3s.io | sh -s - server
+          --server https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443
           --node-ip={{ ansible_default_ipv4.address }}
           --token={{ k3s_cluster_token }}
       when:
@@ -122,12 +122,22 @@
     - name: Подключение воркеров к кластеру
       ansible.builtin.shell:
         cmd: >
-          curl -sfL https://get.k3s.io | 
-          K3S_URL=https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443 
-          K3S_TOKEN={{ k3s_worker_token['content'] | b64decode | trim }} 
+          curl -sfL https://get.k3s.io |
+          K3S_URL=https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443
+          K3S_TOKEN={{ k3s_worker_token['content'] | b64decode | trim }}
           sh -
       when: not k3s_worker_binary.stat.exists
       throttle: 1
+
+
+# ==============================================================================
+# ЭТАП 1.7: Подготовка ОС для распределенного хранилища
+# ==============================================================================
+- name: Конфигурация ОС хостов под требования CSI Longhorn
+  hosts: k3s_masters:k3s_workers
+  gather_facts: false
+  roles:
+    - longhorn
 
 # ==============================================================================
 # ЭТАП 2: Подключение к кластеру и забор Kubeconfig
@@ -145,8 +155,8 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-    - ../group_vars/all/vars.yml   
-    - ../group_vars/all/vault.yml  
+    - ../group_vars/all/vars.yml
+    - ../group_vars/all/vault.yml
   tasks:
     - name: Создание пространства имен для ArgoCD
       kubernetes.core.k8s:
@@ -220,25 +230,8 @@
         state: present
         src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/monitoring-app.yaml"
 
-# ==============================================================================
-# ЭТАП 4: Установка Longhorn и Traefik HelmChartConfig
-# ==============================================================================
-- name: Установка Longhorn в кластер K3s
-  hosts: localhost
-  gather_facts: false
-  roles:
-    - longhorn
-  tasks:
-    - name: Копируем Traefik HelmChartConfig
+    - name: Деплой ArgoCD Application для CSI Longhorn
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
-        src: "{{ playbook_dir }}/../k8s/platform/traefik-config.yaml"
-
-
-
-
-
-
-
-
+        src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/longhorn-app.yaml"
