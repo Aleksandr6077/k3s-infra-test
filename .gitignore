@@ -6,6 +6,7 @@ sa_key.json
 local-infra/haproxy/keepalived.conf
 ansible/hosts.ini
 ansible/.kube/
+txt_output
 # Игнорируем стейт-файлы инфраструктуры
 *.tfstate
 *.tfstate.backup

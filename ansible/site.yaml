@@ -224,6 +224,23 @@
             admin-user: "{{ grafana_admin_user }}"
             admin-password: "{{ vault_grafana_admin_password }}"
 
+    - name: Создание Secret с доступами к S3 для Loki
+      kubernetes.core.k8s:
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: loki-s3-credentials
+            namespace: logging # У Loki namespace: logging
+          type: Opaque
+          stringData:
+            # Берем значения из Terraform outputs
+            accessKeyId: "{{ loki_s3_access_key }}"
+            secretAccessKey: "{{ loki_s3_secret_key }}"
+            bucketName: "{{ loki_s3_bucket }}"
+
     - name: Деплой ArgoCD Application для мониторинга
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/../.kube/config"

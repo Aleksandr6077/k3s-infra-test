@@ -13,7 +13,7 @@ variable "yc_cloud_id" {
 variable "yc_folder_id" {
   type        = string
   description = "ID твоего каталога (folder)"
-  default     = "b1g3t25pff7pdao6upbs"
+  default     = null
 }
 
 variable "ssh_public_key" {
@@ -40,7 +40,7 @@ variable "k3s_workers" {
     core_fraction = number
     disk_size     = number
     zone          = string
- })) 
+ }))
   description = "Конфигурация воркер-нод кластера k3s (имя ноды -> параметры)"
     default = {
     "worker-1" = {

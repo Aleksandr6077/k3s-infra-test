@@ -7,24 +7,19 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-
-  source:
-    repoURL: https://grafana.github.io/helm-charts
-    chart: loki
-    # TODO(применение): прибить к конкретной версии перед применением.
-    # Проверить актуальную
-    targetRevision: 6.16.0
-    helm:
-      valueFiles:
-        - values-loki.yaml
-      # Если values лежат в Git рядом с Application — используем
-      # multi-source, либо кладём values в отдельный repo.
-      # Сейчас — предполагаем, что values в том же repo, что и Application,
-
+  sources:
+    - repoURL: 'https://grafana.github.io/helm-charts'
+      chart: loki
+      targetRevision: "6.16.0"
+      helm:
+        valueFiles:
+          - $values/k8s/platform/logging/values-loki.yaml # Путь к values
+    - repoURL: 'https://github.com/Aleksandr6077/k3s-infra-test'
+      targetRevision: HEAD
+      ref: values
   destination:
-    server: https://kubernetes.default.svc
+    server: 'https://kubernetes.default.svc'
     namespace: logging
-
   syncPolicy:
     automated:
       prune: true
