@@ -1,0 +1,110 @@
+stages:
+  - validate
+  - security
+  - notify
+
+variables:
+  GIT_DEPTH: 20
+
+# ============================================================
+# 1. ВАЛИДАЦИЯ YAML
+# ============================================================
+yamllint:
+  stage: validate
+  image: python:3.11-alpine
+  before_script:
+    - pip install yamllint
+  script:
+    - yamllint -d "{extends: relaxed, rules:{line-length:disable}}" .
+
+# ============================================================
+# 2. COMMITLINT — проверка сообщений коммитов
+# ============================================================
+commitlint:
+  stage: validate
+  image: node:18-alpine
+  before_script:
+    - apk add --no-cache git
+    - npm install -g @commitlint/cli @commitlint/config-conventional
+  script:
+    - echo "$CI_COMMIT_MESSAGE" | npx commitlint --config .commitlintrc.yml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "push"
+
+# ============================================================
+# 3. GITLEAKS — поиск секретов
+# ============================================================
+gitleaks:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  script:
+    - gitleaks detect --source="." --verbose
+  allow_failure: false
+
+# ============================================================
+# 4. TRIVY — IaC
+# ============================================================
+trivy_iac:
+  stage: security
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy config --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed .
+
+# ============================================================
+# 5. TRIVY — образы (nginx)
+# ============================================================
+trivy_image_nginx:
+  stage: security
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed nginx:1.27-alpine
+
+# ============================================================
+# 6. KUBE-SCORE — best practices для k8s-манифестов
+# ============================================================
+kube_score:
+  stage: security
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl tar
+  script:
+    - curl -sSL https://github.com/zegl/kube-score/releases/download/v1.19.0/kube-score_1.19.0_linux_amd64.tar.gz | tar -xz -C /usr/local/bin
+    - kube-score score k8s/ --output-format ci --exit-one-on-warning
+
+# ============================================================
+# 7. УВЕДОМЛЕНИЯ В TELEGRAM
+# ============================================================
+.telegram_notify:
+  stage: notify
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      if [ "$CI_JOB_STATUS" == "success" ]; then
+        TEXT="✅ <b>Пайплайн k3s-infra-test успешно пройден!</b>%0A<b>Коммит:</b> ${CI_COMMIT_MESSAGE}%0A<b>Автор:</b> ${GITLAB_USER_NAME}"
+      else
+        TEXT="❌ <b>Пайплайн k3s-infra-test ЗАВАЛЕН!</b>%0AПроверьте логи сборки безопасности.%0A<b>Автор коммита:</b> ${GITLAB_USER_NAME}"
+      fi
+      curl -sf -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+        -d chat_id="${TELEGRAM_CHAT_ID}" \
+        -d parse_mode="HTML" \
+        -d text="${TEXT}" > /dev/null
+
+notify_success:
+  extends: .telegram_notify
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+
+notify_failure:
+  extends: .telegram_notify
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_failure

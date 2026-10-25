@@ -26,7 +26,7 @@ prometheus:
 # ==============================================================================
 grafana:
   admin:
-    existingSecret: "grafana-admin-credentials"
+    existingSecret: "grafana-admin"
     userKey: "admin-user"
     passwordKey: "admin-password"
   resources:

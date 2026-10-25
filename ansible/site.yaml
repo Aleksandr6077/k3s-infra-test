@@ -224,6 +224,37 @@
             admin-user: "{{ grafana_admin_user }}"
             admin-password: "{{ vault_grafana_admin_password }}"
 
+    - name: Создание namespace для логирования
+      kubernetes.core.k8s:
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
+        name: logging
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Получить имя S3-бакета для Loki из OpenTofu
+      ansible.builtin.shell:
+        cmd: "cd {{ playbook_dir }}/../terraform && TF_VAR_yc_token=$(yc iam create-token) tofu output -raw loki_s3_bucket"
+      register: loki_bucket_out
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Получить Access Key для Loki из OpenTofu
+      ansible.builtin.shell:
+        cmd: "cd {{ playbook_dir }}/../terraform && TF_VAR_yc_token=$(yc iam create-token) tofu output -raw loki_s3_access_key"
+      register: loki_access_out
+      delegate_to: localhost
+      changed_when: false
+      no_log: true
+
+    - name: Получить Secret Key для Loki из OpenTofu
+      ansible.builtin.shell:
+        cmd: "cd {{ playbook_dir }}/../terraform && TF_VAR_yc_token=$(yc iam create-token) tofu output -raw loki_s3_secret_key"
+      register: loki_secret_out
+      delegate_to: localhost
+      changed_when: false
+      no_log: true
+
     - name: Создание Secret с доступами к S3 для Loki
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/../.kube/config"
@@ -233,19 +264,25 @@
           kind: Secret
           metadata:
             name: loki-s3-credentials
-            namespace: logging # У Loki namespace: logging
+            namespace: logging
           type: Opaque
           stringData:
-            # Берем значения из Terraform outputs
-            accessKeyId: "{{ loki_s3_access_key }}"
-            secretAccessKey: "{{ loki_s3_secret_key }}"
-            bucketName: "{{ loki_s3_bucket }}"
+            AWS_ACCESS_KEY_ID: "{{ loki_access_out.stdout }}"
+            AWS_SECRET_ACCESS_KEY: "{{ loki_secret_out.stdout }}"
+            LOKI_BUCKET: "{{ loki_bucket_out.stdout }}"
+      no_log: true
 
     - name: Деплой ArgoCD Application для мониторинга
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
         src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/monitoring-app.yaml"
+
+    - name: Деплой ArgoCD Application для Loki
+      kubernetes.core.k8s:
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
+        state: present
+        src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/loki-app.yaml"
 
     - name: Деплой ArgoCD Application для CSI Longhorn
       kubernetes.core.k8s:

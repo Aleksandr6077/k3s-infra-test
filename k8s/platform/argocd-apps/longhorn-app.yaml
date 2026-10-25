@@ -9,7 +9,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: 'https://longhorn.io'
+    repoURL: 'https://charts.longhorn.io/'
     targetRevision: 1.7.2  # Фиксируем версию чарта
     chart: longhorn
     helm:
@@ -19,6 +19,8 @@ spec:
         defaultSettings:
           defaultReplicaCount: 2
           upgradeChecker: false
+        preUpgradeChecker:
+          jobEnabled: false
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: longhorn-system # Автоматический деплой в изолированный namespace

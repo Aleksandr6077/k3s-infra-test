@@ -83,6 +83,12 @@ upgrade:
 	@echo "$(GREEN)====> Инициализация успешно завершена! <====$(NC)"
 
 
+## init-upgrade: Обновление лок-файла провайдеров (добавление новых провайдеров)
+init-upgrade:
+	@echo "$(CYAN)====> Обновление зависимостей провайдеров... <====$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu init -upgrade
+	@echo "$(GREEN)====> Провайдеры обновлены! <====$(NC)"
+
 list:
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu state list
 	@echo "$(GREEN)====> Инициализация успешно завершена! <====$(NC)"
@@ -100,6 +106,10 @@ down:
 	@echo "$(RED)ВНИМАНИЕ! Это действие полностью уничтожит всю облачную инфраструктуру!$(NC)"
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu destroy -auto-approve
 	@echo "$(GREEN)====> Облачный стенд полностью уничтожен. <====$(NC)"
+## down-safe: Удалить всё, кроме S3-бакета Loki
+down-safe:
+	@echo "$(RED)Удаление стенда с сохранением бакета Loki...$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu destroy -auto-approve -exclude="yandex_storage_bucket.loki_chunks" -exclude="yandex_iam_service_account.loki_sa" -exclude="yandex_iam_service_account_static_access_key.loki_key"
 
 ## recreate: Быстрое и безопасное пересоздание инфраструктуры (down + up)
 recreate:
