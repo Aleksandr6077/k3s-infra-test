@@ -15,7 +15,7 @@ resource "yandex_iam_service_account" "loki_sa" {
 # 2. Выдаем права на Object Storage
 resource "yandex_resourcemanager_folder_iam_member" "loki_editor" {
   folder_id = var.yc_folder_id
-  role      = "storage.editor" # Для записи чанков и чтения
+  role      = "storage.admin" # Для записи чанков и чтения
   member    = "serviceAccount:${yandex_iam_service_account.loki_sa.id}"
 }
 
@@ -36,6 +36,11 @@ resource "yandex_storage_bucket" "loki_chunks" {
   lifecycle {
     prevent_destroy = true
   }
+
+  # Явная зависимость от выдачи прав
+  depends_on = [
+    yandex_resourcemanager_folder_iam_member.loki_editor
+  ]
 }
 
 # 5. Экспортируем данные для Ansible

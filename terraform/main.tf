@@ -110,7 +110,7 @@ resource "yandex_vpc_security_group" "bastion_sg" {
   ingress {
     protocol       = "TCP"
     description    = "Разрешить SSH на Bastion извне (только для админа)"
-    v4_cidr_blocks = var.admin_allowed_ips 
+    v4_cidr_blocks = var.admin_allowed_ips
     port           = 22
   }
 
@@ -210,7 +210,7 @@ resource "yandex_compute_instance" "k3s_masters" {
     memory        = 4
     core_fraction = 20
   }
-  
+
   # Политика планирования для создания прерываемых (дешевых) ВМ
   scheduling_policy {
     preemptible = true
@@ -303,7 +303,7 @@ resource "yandex_compute_instance" "bastion" {
 
   # Минимальные ресурсы для экономии бюджета
   resources {
-    cores         = 2 
+    cores         = 2
     memory        = 1 # 1 ГБ RAM вполне достаточно для проксирования трафика
     core_fraction = 20
   }
@@ -391,7 +391,6 @@ resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
   }
 }
 
-
 # ==============================================================================
 # 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — С ЗАГЛУШКОЙ ДЛЯ ВОРКЕРОВ
 # ==============================================================================
@@ -404,27 +403,10 @@ resource "local_file" "ansible_inventory" {
 
       # Передаем список объектов мастеров целиком для Jinja2-цикла
       k3s_masters = yandex_compute_instance.k3s_masters
-      
+
       # Заменили заглушку [] на реальный ресурс воркер-нод и Передаем IP NLB в Ansible
       k3s_workers = yandex_compute_instance.k3s_workers
     }
   )
   filename = "${path.module}/../ansible/hosts.ini"
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

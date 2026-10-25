@@ -21,9 +21,6 @@ loki:
       endpoint: "storage.yandexcloud.net"
       region: "ru-central1"
       s3ForcePathStyle: true
-      # Секреты подтянутся из K8s Secret через extraEnv
-      accessKeyId: "${LOKI_ACCESS_KEY}"
-      secretAccessKey: "${LOKI_SECRET_KEY}"
 
   schemaConfig:
     configs:
