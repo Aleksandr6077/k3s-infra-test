@@ -29,9 +29,9 @@ resource "yandex_vpc_subnet" "k3s_public_subnet" {
   v4_cidr_blocks = ["10.200.1.0/24"]
 }
 
-resource "yandex_vpc_subnet" "k3s_public_subnet_b" {
-  name           = "k3s-public-subnet-b"
-  zone           = "ru-central1-b"
+resource "yandex_vpc_subnet" "k3s_public_subnet_d" {
+  name           = "k3s-public-subnet-d"
+  zone           = "ru-central1-d"
   network_id     = yandex_vpc_network.k3s_network.id
   v4_cidr_blocks = ["10.201.1.0/24"]
 }
@@ -45,9 +45,9 @@ resource "yandex_vpc_subnet" "k3s_private_subnet_a" {
   route_table_id = yandex_vpc_route_table.k3s_route_table.id # Привязываем NAT-шлюз только сюда
 }
 
-resource "yandex_vpc_subnet" "k3s_private_subnet_b" {
-  name           = "k3s-private-subnet-b"
-  zone           = "ru-central1-b"
+resource "yandex_vpc_subnet" "k3s_private_subnet_e" {
+  name           = "k3s-private-subnet-e"
+  zone           = "ru-central1-e"
   network_id     = yandex_vpc_network.k3s_network.id
   v4_cidr_blocks = ["10.201.2.0/24"]
   route_table_id = yandex_vpc_route_table.k3s_route_table.id
@@ -70,9 +70,9 @@ resource "yandex_vpc_subnet" "k3s_workers_subnet_a" {
   route_table_id = yandex_vpc_route_table.k3s_route_table.id
 }
 
-resource "yandex_vpc_subnet" "k3s_workers_subnet_b" {
-  name           = "k3s-workers-subnet-b"
-  zone           = "ru-central1-b"
+resource "yandex_vpc_subnet" "k3s_workers_subnet_e" {
+  name           = "k3s-workers-subnet-e"
+  zone           = "ru-central1-e"
   network_id     = yandex_vpc_network.k3s_network.id
   v4_cidr_blocks = ["10.201.3.0/24"]
   route_table_id = yandex_vpc_route_table.k3s_route_table.id
@@ -184,10 +184,10 @@ data "yandex_compute_image" "ubuntu" {
 # 4. ВИРТУАЛЬНЫЕ МАШИНЫ (K3S MASTERS) — ПОЛНОСТЬЮ ПРИВАТНЫЕ
 # ==============================================================================
 locals {
-  master_zones = ["ru-central1-a", "ru-central1-b", "ru-central1-d"]
+  master_zones = ["ru-central1-a", "ru-central1-e", "ru-central1-d"]
   master_subnets = [
     yandex_vpc_subnet.k3s_private_subnet_a.id,
-    yandex_vpc_subnet.k3s_private_subnet_b.id,
+    yandex_vpc_subnet.k3s_private_subnet_e.id,
     yandex_vpc_subnet.k3s_private_subnet_d.id,
   ]
 }
@@ -220,6 +220,7 @@ resource "yandex_compute_instance" "k3s_masters" {
     initialize_params {
       image_id = data.yandex_compute_image.ubuntu.id
       size     = 15
+      type     = "network-ssd"
     }
   }
 
@@ -241,7 +242,7 @@ resource "yandex_compute_instance" "k3s_masters" {
 locals {
   worker_subnets = {
     "ru-central1-a" = yandex_vpc_subnet.k3s_workers_subnet_a.id
-    "ru-central1-b" = yandex_vpc_subnet.k3s_workers_subnet_b.id
+    "ru-central1-e" = yandex_vpc_subnet.k3s_workers_subnet_e.id
   }
 }
 
@@ -271,6 +272,7 @@ resource "yandex_compute_instance" "k3s_workers" {
     initialize_params {
       image_id = data.yandex_compute_image.ubuntu.id
       size     = each.value.disk_size
+      type     = "network-ssd"
     }
   }
 
@@ -292,7 +294,7 @@ resource "yandex_compute_instance" "k3s_workers" {
 # ==============================================================================
 resource "yandex_compute_instance" "bastion" {
   name        = "k3s-bastion"
-  zone        = "ru-central1-b"
+  zone        = "ru-central1-d"
   platform_id = "standard-v3"
 
   labels = {
@@ -316,12 +318,13 @@ resource "yandex_compute_instance" "bastion" {
     initialize_params {
       image_id = data.yandex_compute_image.ubuntu.id
       size     = 10 # Минимальный размер диска для ОС
+      type     = "network-ssd"
     }
   }
 
   network_interface {
     # Бастион сажаем строго в публичную подсеть и выдаем ему публичный IP
-    subnet_id          = yandex_vpc_subnet.k3s_public_subnet_b.id
+    subnet_id          = yandex_vpc_subnet.k3s_public_subnet_d.id
     nat                = true
     security_group_ids = [yandex_vpc_security_group.bastion_sg.id]
   }

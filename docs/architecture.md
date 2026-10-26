@@ -14,9 +14,9 @@
        │                                                                                        [ Yandex NLB (k3s-ingress-nlb) ]
        ▼ (Прямое SSH-подключение)                                                               (Публичный IP, порты 80/443)
 ┌────────────────────────────────────────────────────────────────────────┐                              │
-│ ПУБЛИЧНЫЙ КОНТУР (k3s-public-subnet-b)                                 │                              │ (Направляет на NodePort Traefik)
+│ ПУБЛИЧНЫЙ КОНТУР (k3s-public-subnet-d)                                 │                              │ (Направляет на NodePort Traefik)
 │  Внутренний IP: 10.201.1.x                                             │                              │
-│ Диапазон: 10.201.1.0/24  │  Зона: ru-central1-b                        │                              │
+│ Диапазон: 10.201.1.0/24  │  Зона: ru-central1-d                        │                              │
 │                                                                        │                              │
 │  [k3s-bastion] (Jump Host)                                             │                              │
 │  Публичный IP: динамический                                            │                              │
@@ -27,9 +27,9 @@
 │ МУЛЬТИЗОНАЛЬНЫЙ КОНТУР МАСТЕРОВ                                                                         │
 │ В интернет ходят строго через: [ yandex_vpc_gateway ] (NAT-шлюз)                                        │
 │                                                                                                         │
-│  Зона ru-central1-a              Зона ru-central1-b              Зона ru-central1-d                     │
+│  Зона ru-central1-a              Зона ru-central1-e              Зона ru-central1-d                     │
 │  ┌──────────────────────┐        ┌──────────────────────┐        ┌──────────────────────┐               │
-│  │ k3s-private-subnet-a │        │ k3s-private-subnet-b │        │ k3s-private-subnet-d │               │
+│  │ k3s-private-subnet-a │        │ k3s-private-subnet-e │        │ k3s-private-subnet-d │               │
 │  │ 10.200.2.0/24        │        │ 10.201.2.0/24        │        │ 10.202.2.0/24        │               │
 │  │                      │        │                      │        │                      │               │
 │  │  [k3s-master-1]      │        │  [k3s-master-2]      │        │  [k3s-master-3]      │               │
@@ -45,9 +45,9 @@
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ МУЛЬТИЗОНАЛЬНЫЙ КОНТУР ВОРКЕРОВ                                                                                 │
 │                                                                                                                 │
-│  Зона ru-central1-a                          Зона ru-central1-b                                                 │
+│  Зона ru-central1-a                          Зона ru-central1-e                                               │
 │  ┌──────────────────────────────┐            ┌──────────────────────────────┐                                   │
-│  │ k3s-workers-subnet-a         │            │ k3s-workers-subnet-b         │                                   │
+│  │ k3s-workers-subnet-a         │            │ k3s-workers-subnet-e         │                                   │
 │  │ 10.200.3.0/24                │            │ 10.201.3.0/24                │                                   │
 │  │                              │            │                              │                                   │
 │  │  [k3s-worker-1]              │            │  [k3s-worker-2]              │                                   │
@@ -68,8 +68,8 @@
 - **VPC** `k3s-network` — изолированная сеть.
 - **Подсети:**
   - `k3s-public-subnet` (`10.200.1.0/24`) — бастион.
-  - `k3s-private-subnet-a/b/d` — мастера (по одной в каждой зоне).
-  - `k3s-workers-subnet-a/b` — воркеры.
+  - `k3s-private-subnet-a/d/e` — мастера (по одной в каждой зоне).
+  - `k3s-workers-subnet-a/e` — воркеры.
 - **NAT-шлюз** — для выхода приватных нод в интернет.
 - **Security Groups:** `bastion_sg`, `cluster_sg`.
 
