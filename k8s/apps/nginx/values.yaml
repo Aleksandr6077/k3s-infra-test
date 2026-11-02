@@ -20,7 +20,7 @@ resources:
 
 storage:
   size: 1Gi
-  storageClassName: local-path
+  storageClassName: longhorn
 
 service:
   port: 80
