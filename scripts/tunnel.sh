@@ -34,7 +34,7 @@ if [ "$FORCE_RECREATE" -eq 0 ] && ss -tlnp 2>/dev/null | grep -q ":6443 "; then
     exit 0
 fi
 
-# Парсим IP бастиона и мастеров
+# Парсим IP бастиона и мастеров и воркеров
 BASTION_IP=$(grep "^k3s-bastion " "$HOSTS_FILE" | sed 's/.*ansible_host=\([^ ]*\).*/\1/')
 MASTER_IPS=$(grep "^k3s-master-" "$HOSTS_FILE" | sed 's/.*ansible_host=\([^ ]*\).*/\1/')
 
