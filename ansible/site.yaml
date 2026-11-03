@@ -41,6 +41,7 @@
           curl -sfL https://get.k3s.io | sh -s - server
           --cluster-init
           --node-ip={{ ansible_default_ipv4.address }}
+           --disable servicelb
       when:
         - inventory_hostname == groups['k3s_masters'][0]
         - not k3s_binary.stat.exists
@@ -86,6 +87,7 @@
           --server https://{{ hostvars[groups['k3s_masters'][0]]['ansible_default_ipv4'].address }}:6443
           --node-ip={{ ansible_default_ipv4.address }}
           --token={{ k3s_cluster_token }}
+          --disable servicelb
       when:
         - inventory_hostname != groups['k3s_masters'][0]
         - not k3s_binary_others.stat.exists

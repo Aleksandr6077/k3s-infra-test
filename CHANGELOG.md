@@ -462,30 +462,23 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
     - проверить доставку алертов в `Telegram`
     - Проверить Loki/Alloy Running(after P2)
 
+
+## ✅ 5. Changelog: Этап 15
+
+### Добавлено
+- **Git Workflow** — добавляем ветку `infra-tests`. Чтобы не коммитить фичи сразу в мастер а только через PR.
+- **GitOps(pull)** — pull-модель доставки приложений через ArgoCD. Не идеально (в P1 `docs/tech-debt.md` описано прод решение)
+
+### Изменено
+- **Multizones:** временно убраны 2 мастера из 3, для тестов. Подробнее в ADR01 [![multi-zonal-limitation](./docs/multi-zonal-limitation.md)](./docs/multi-zonal-limitation.md)
+- **perf для Воркеров и Мастеров:** — теперь на SSD дисках, а так же по 4GB RAM.
+- **nginx-gitops-app:** - вместо local-path теперь на `storageClassName: longhorn`
+
+
 ## 🚦 Текущий статус проекта
 
 ### Проект находится в облачной инфре Yandex Cloud.
 
- - Приложение `my-nginx` работает в `default` namespace, 1 под в статусе `Running`.
- - ArgoCD показывает статус `Synced` и `Healthy`.
  - скелет GitOps-пайплайна готов к использованию.
  - Реализована GitOps-петля: ArgoCD отслеживает состояние манифестов в `k8s/apps/nginx/`
-```
-NAME                        READY   STATUS    RESTARTS   AGE
-my-nginx-5ffdfbb6cc-4gm5w   1/1     Running   0          7m58s
-
-NAME               SYNC STATUS   HEALTH STATUS
-nginx-gitops-app   Synced        Healthy
-
-🚀синхронизация настроена🚀
-
-```
-
-### Что необходимо еще доработать:
-
-* **[x] Этап 1: Инфраструктурный слой (IaC)** — Полностью автоматизировано развертывание сети VPC, правил Security Groups и базовых виртуальных машин в Yandex Cloud через OpenTofu.
-* **[x] Этап 2: Автоматический инвентарь** — Настроена автогенерация файла `hosts.ini` из шаблона. Ansible успешно проходит этапы авторизации, валидации связи (`ping`) и первичной настройки ОС.
-* **[x] Этап 3: Интеграция облачного балансировщика** — Полный отказ от локальных компонентов балансировки (HAProxy/Keepalived). Внедрен нативный `yandex_lb_network_load_balancer` с выделением статического внешнего IP-адреса для **перманентного маппинга** входящего трафика Kubernetes API.
-* **[x] Этап 4: Развертывание мультизонного HA-кластера K3s (WIP)** — Переработка архитектуры вычислительных ресурсов: отказ от хардкода одной зоны в пользу распределения 3 мастер-нод по изолированным дата-центрам Yandex Cloud (`ru-central1-a`, `ru-central1-b`, `ru-central1-d`). Обеспечение физического кворума etcd (минимизация риска split-brain). Динамическая генерация сетевых подсетей и инвентаря Ansible через циклы по массиву зон.
-* **[ ] Этап 5: Observability & Security (WIP)** — Развертывание нативного облачного стека мониторинга (Prometheus Operator / Grafana), централизованного логирования (Loki) и сквозной запуск проверок безопасности в CI/CD пайплайнах (Trivy, Линтеры).
-* **[ ] Этап 6: Полноценный GitOps (WIP)** — миграция деплоя манифестов мониторинга (Loki, Grafana, Prometheus) в `GitOps`-пайплайны.
+ - Идёт переход на концепцию `App of Apps`

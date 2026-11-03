@@ -121,6 +121,29 @@ resource "yandex_vpc_security_group" "bastion_sg" {
   }
 }
 
+# ГРУППА 3: Периметр для внутреннего NLB
+resource "yandex_vpc_security_group" "nlb_sg" {
+  name        = "k3s-nlb-security-group"
+  description = "Правила для внутреннего NLB (доступ к NodePort Traefik)"
+  network_id  = yandex_vpc_network.k3s_network.id
+
+  # NLB стучится на воркеры по NodePort. Так как NLB внутренний,
+  # он ходит с внутренних IP подсети воркеров.
+  egress {
+    protocol       = "TCP"
+    description    = "Трафик от NLB к NodePort Traefik на воркерах"
+    v4_cidr_blocks = ["10.200.3.0/24", "10.202.3.0/24"] # подсети воркеров
+    port           = 30360
+  }
+  egress {
+    protocol       = "TCP"
+    description    = "Трафик от NLB к NodePort Traefik (HTTPS) на воркерах"
+    v4_cidr_blocks = ["10.200.3.0/24", "10.202.3.0/24"]
+    port           = 31181
+  }
+}
+
+
 # ГРУППА 2: Периметр для нод кластера
 resource "yandex_vpc_security_group" "cluster_sg" {
   name        = "k3s-cluster-security-group"
@@ -131,7 +154,7 @@ resource "yandex_vpc_security_group" "cluster_sg" {
   ingress {
     protocol          = "TCP"
     description       = "Разрешить SSH на ноды только для участников bastion_sg"
-    security_group_id = yandex_vpc_security_group.bastion_sg.id # Ссылка на ID группы бастиона
+    security_group_id = yandex_vpc_security_group.bastion_sg.id
     port              = 22
   }
 
@@ -142,7 +165,7 @@ resource "yandex_vpc_security_group" "cluster_sg" {
     predefined_target = "self_security_group"
   }
 
-  # Входящий Kubernetes API для внешнего мира (для твоего домашнего kubectl)
+  # Входящий Kubernetes API для внешнего мира (для домашнего kubectl)
   ingress {
     protocol       = "TCP"
     description    = "Kubernetes API для внешнего управления"
@@ -150,17 +173,18 @@ resource "yandex_vpc_security_group" "cluster_sg" {
     port           = 6443
   }
 
-  # Входящий HTTP/HTTPS для приложений (заготовка под Ingress на воркерах)
+  # Входящий HTTP/HTTPS для приложений (Ingress на воркерах)
+  # РАЗРЕШАЕМ ТРАФИК ТОЛЬКО ИЗ ПОДСЕТЕЙ, ГДЕ ЖИВУТ NLB И ВОРКЕРЫ
   ingress {
     protocol       = "TCP"
-    description    = "Traefik HTTP NodePort"
-    v4_cidr_blocks = ["0.0.0.0/0"]
+    description    = "Traefik HTTP NodePort (из подсетей воркеров/NLB)"
+    predefined_target = "loadbalancer_healthchecks"
     port           = 30360
   }
   ingress {
     protocol       = "TCP"
-    description    = "Traefik HTTPS NodePort"
-    v4_cidr_blocks = ["0.0.0.0/0"]
+    description    = "Traefik HTTPS NodePort (из подсетей воркеров/NLB)"
+    predefined_target = "loadbalancer_healthchecks"
     port           = 31181
   }
 
@@ -183,15 +207,14 @@ data "yandex_compute_image" "ubuntu" {
 # 4. ВИРТУАЛЬНЫЕ МАШИНЫ (K3S MASTERS) — ПОЛНОСТЬЮ ПРИВАТНЫЕ
 # ==============================================================================
 locals {
-  master_zones = ["ru-central1-a", "ru-central1-d"]
+  master_zones = ["ru-central1-a"]
   master_subnets = [
     yandex_vpc_subnet.k3s_private_subnet_a.id,
-    yandex_vpc_subnet.k3s_private_subnet_d.id,
   ]
 }
 
 resource "yandex_compute_instance" "k3s_masters" {
-  count       = 2
+  count       = 1
   name        = "k3s-master-${count.index + 1}"
   zone        = local.master_zones[count.index]
   platform_id = "standard-v3"
@@ -343,13 +366,13 @@ resource "yandex_compute_instance" "bastion" {
 #}
 
 # ==============================================================================
-# 5. ВНЕШНИЙ NLB ДЛЯ INGRESS (80/443)
+# 5.  ВНУТРЕННИЙ NLB ДЛЯ INGRESS (80/443)
 # ==============================================================================
 resource "yandex_lb_target_group" "k3s_ingress_tg" {
   name = "k3s-ingress-target-group"
 
   dynamic "target" {
-    for_each = yandex_compute_instance.k3s_masters
+    for_each = yandex_compute_instance.k3s_workers
     content {
       subnet_id = target.value.network_interface[0].subnet_id
       address   = target.value.network_interface[0].ip_address
@@ -359,13 +382,14 @@ resource "yandex_lb_target_group" "k3s_ingress_tg" {
 
 resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
   name = "k3s-ingress-nlb"
-  type = "external"
+  type = "internal"
 
   listener {
     name        = "http"
     port        = 80
     target_port = 30360
-    external_address_spec {
+    internal_address_spec {
+      subnet_id  = yandex_vpc_subnet.k3s_workers_subnet_a.id
       ip_version = "ipv4"
     }
   }
@@ -374,7 +398,8 @@ resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
     name        = "https"
     port        = 443
     target_port = 31181
-    external_address_spec {
+    internal_address_spec {
+      subnet_id  = yandex_vpc_subnet.k3s_workers_subnet_a.id
       ip_version = "ipv4"
     }
   }
@@ -393,7 +418,7 @@ resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
 }
 
 # ==============================================================================
-# 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI) — С ЗАГЛУШКОЙ ДЛЯ ВОРКЕРОВ
+# 6. ГЕНЕРАЦИЯ ИНВЕНТАРЯ ANSIBLE (HOSTS.INI)
 # ==============================================================================
 resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/hosts.ini.tpl",
@@ -405,8 +430,15 @@ resource "local_file" "ansible_inventory" {
       # Передаем список объектов мастеров целиком для Jinja2-цикла
       k3s_masters = yandex_compute_instance.k3s_masters
 
-      # Заменили заглушку [] на реальный ресурс воркер-нод и Передаем IP NLB в Ansible
+      # Ресурс воркер-нод
       k3s_workers = yandex_compute_instance.k3s_workers
+
+      # Передаем nlb
+      k3s_ingress_nlb_internal_ip = [
+        for l in yandex_lb_network_load_balancer.k3s_ingress_nlb.listener :
+        one(l.internal_address_spec).address
+        if l.name == "http"
+      ][0]
     }
   )
   filename = "${path.module}/../ansible/hosts.ini"
