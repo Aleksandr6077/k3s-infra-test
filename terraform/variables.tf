@@ -49,3 +49,27 @@ variable "cicd_allowed_ips" {
   description = "Список IP-адресов CI/CD раннеров для доступа к Kubernetes API (6443)"
   default     = []
 }
+
+variable "vault_grafana_admin_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "vault_TELEGRAM_BOT_TOKEN" {
+  type      = string
+  sensitive = true
+}
+
+variable "vault_TELEGRAM_CHAT_ID" {
+  type      = string
+  sensitive = true
+}
+
+variable "env_zones" {
+  type        = map(list(string))
+  description = "Карта зон для разных окружений"
+  default = {
+    prod = ["ru-central1-a", "ru-central1-d", "ru-central1-e"]
+    dev  = ["ru-central1-a"]
+  }
+}

@@ -10,14 +10,13 @@
     - local_env
 
 # ==============================================================================
-# ЭТАП 1.5: Установка K3s на облачные виртуалки Яндекса (Автогенерация токена)
+# ЭТАП 1.5: Установка K3s
 # ==============================================================================
 - name: Развертывание высокодоступного кластера K3s в Облаке
   hosts: k3s_masters
   become: true
   gather_facts: false
   tasks:
-
     - name: "SRE-Guard: Ожидаем полной готовности SSH-демона в ОС"
       ansible.builtin.wait_for:
         host: "{{ ansible_host | default(inventory_hostname) }}"
@@ -41,7 +40,8 @@
           curl -sfL https://get.k3s.io | sh -s - server
           --cluster-init
           --node-ip={{ ansible_default_ipv4.address }}
-           --disable servicelb
+          --disable servicelb
+          --disable traefik
       when:
         - inventory_hostname == groups['k3s_masters'][0]
         - not k3s_binary.stat.exists
@@ -88,13 +88,14 @@
           --node-ip={{ ansible_default_ipv4.address }}
           --token={{ k3s_cluster_token }}
           --disable servicelb
+          --disable traefik
       when:
         - inventory_hostname != groups['k3s_masters'][0]
         - not k3s_binary_others.stat.exists
       throttle: 1
 
 # ==============================================================================
-# ЭТАП 1.6: Подключение воркеров к кластеру K3s
+# ЭТАП 1.6: Подключение воркеров
 # ==============================================================================
 - name: Подключение воркеров к кластеру K3s
   hosts: k3s_workers
@@ -131,18 +132,8 @@
       when: not k3s_worker_binary.stat.exists
       throttle: 1
 
-
 # ==============================================================================
-# ЭТАП 1.7: Подготовка ОС для распределенного хранилища
-# ==============================================================================
-- name: Конфигурация ОС хостов под требования CSI Longhorn
-  hosts: k3s_masters:k3s_workers
-  gather_facts: false
-  roles:
-    - longhorn
-
-# ==============================================================================
-# ЭТАП 2: Подключение к кластеру и забор Kubeconfig
+# ЭТАП 2: Kubeconfig
 # ==============================================================================
 - name: Экспорт доступов из кластера K3s
   hosts: k3s_masters
@@ -151,7 +142,7 @@
     - k3s_kubeconfig
 
 # ==============================================================================
-# ЭТАП 3: Развертывание GitOps-фундамента (Автоматизированный Manifest-деплой)
+# ЭТАП 3: ArgoCD + ESO Auth Secret + Root App
 # ==============================================================================
 - name: Подготовка GitOps-оператора в Kubernetes
   hosts: localhost
@@ -182,21 +173,16 @@
       ansible.builtin.pause:
         seconds: 15
 
-    - name: Деплой ArgoCD Application для Nginx
+    # ---- Сначала готовим ESO-инфраструктуру, потом Root App ----
+    - name: Создание namespace для ESO
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/../.kube/config"
-        state: present
-        src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/nginx-app.yaml"
-
-    - name: Создание namespace для мониторинга
-      kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/../.kube/config"
-        name: monitoring
+        name: external-secrets
         api_version: v1
         kind: Namespace
         state: present
 
-    - name: Создание Secret с Telegram токеном
+    - name: Создание Secret с авторизованным ключом для ESO
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
@@ -204,90 +190,15 @@
           apiVersion: v1
           kind: Secret
           metadata:
-            name: alertmanager-telegram
-            namespace: monitoring
+            name: yc-auth
+            namespace: external-secrets
           type: Opaque
           stringData:
-            bot_token: "{{ vault_TELEGRAM_BOT_TOKEN }}"
-            chat_id: "{{ vault_TELEGRAM_CHAT_ID }}"
-
-    - name: Создание Secret с паролем Grafana
-      kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/../.kube/config"
-        state: present
-        definition:
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: grafana-admin
-            namespace: monitoring
-          type: Opaque
-          stringData:
-            admin-user: "{{ grafana_admin_user }}"
-            admin-password: "{{ vault_grafana_admin_password }}"
-
-    - name: Создание namespace для логирования
-      kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/../.kube/config"
-        name: logging
-        api_version: v1
-        kind: Namespace
-        state: present
-
-    - name: Получить имя S3-бакета для Loki из OpenTofu
-      ansible.builtin.shell:
-        cmd: "cd {{ playbook_dir }}/../terraform && TF_VAR_yc_token=$(yc iam create-token) tofu output -raw loki_s3_bucket"
-      register: loki_bucket_out
-      delegate_to: localhost
-      changed_when: false
-
-    - name: Получить Access Key для Loki из OpenTofu
-      ansible.builtin.shell:
-        cmd: "cd {{ playbook_dir }}/../terraform && TF_VAR_yc_token=$(yc iam create-token) tofu output -raw loki_s3_access_key"
-      register: loki_access_out
-      delegate_to: localhost
-      changed_when: false
+            authorized-key: "{{ lookup('file', eso_authorized_key_file) }}"
       no_log: true
 
-    - name: Получить Secret Key для Loki из OpenTofu
-      ansible.builtin.shell:
-        cmd: "cd {{ playbook_dir }}/../terraform && TF_VAR_yc_token=$(yc iam create-token) tofu output -raw loki_s3_secret_key"
-      register: loki_secret_out
-      delegate_to: localhost
-      changed_when: false
-      no_log: true
-
-    - name: Создание Secret с доступами к S3 для Loki
+    - name: Деплой Root App (App of Apps)
       kubernetes.core.k8s:
         kubeconfig: "{{ playbook_dir }}/../.kube/config"
         state: present
-        definition:
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: loki-s3-credentials
-            namespace: logging
-          type: Opaque
-          stringData:
-            AWS_ACCESS_KEY_ID: "{{ loki_access_out.stdout }}"
-            AWS_SECRET_ACCESS_KEY: "{{ loki_secret_out.stdout }}"
-            LOKI_BUCKET: "{{ loki_bucket_out.stdout }}"
-      no_log: true
-
-    - name: Деплой ArgoCD Application для мониторинга
-      kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/../.kube/config"
-        state: present
-        src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/monitoring-app.yaml"
-
-    - name: Деплой ArgoCD Application для Loki
-      kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/../.kube/config"
-        state: present
-        src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/loki-app.yaml"
-
-    - name: Деплой ArgoCD Application для CSI Longhorn
-      kubernetes.core.k8s:
-        kubeconfig: "{{ playbook_dir }}/../.kube/config"
-        state: present
-        src: "{{ playbook_dir }}/../k8s/platform/argocd-apps/longhorn-app.yaml"
+        src: "{{ playbook_dir }}/../k8s/argocd/root-app.yaml"

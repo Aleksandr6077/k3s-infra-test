@@ -1,5 +1,20 @@
+# ==============================================================================
+# 0. ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+# ==============================================================================
+
 locals {
-  # Служебные диапазоны Yandex Cloud для проверок здоровья (Healthchecks) балансировщика NLB
+  # Автоматически определяем текущую среду (dev или prod)
+  env = terraform.workspace
+
+# Выбираем список зон для мастеров текущего окружения
+  # Для prod: [a, d, e], для dev: [a, d, a]
+  current_zones = var.env_zones[local.env]
+
+# Выделяем уникальный набор физических зон для создания подсетей (без дублей)
+  # Для prod: [a, d, e], для dev: [a, d] (убирает дубль зоны 'а', чтобы не было ошибки неуникального имени подсети)
+  unique_zones = distinct(local.current_zones)
+
+# Служебные диапазоны Yandex Cloud для проверок здоровья (Healthchecks) балансировщика NLB
   yc_internal_lb_healthchecks = [
     "198.18.235.0/24",
     "198.18.248.0/24"
@@ -11,81 +26,56 @@ locals {
     var.cicd_allowed_ips,
     local.yc_internal_lb_healthchecks
   )
+
 }
 
+# ==============================================================================
+# 1. ДИНАМИЧЕСКАЯ СЕТЕВАЯ ИНФРАСТРУКТУРА (VPC И ПОДСЕТИ)
+# ==============================================================================
 
-# ==============================================================================
-# 1. СЕТЕВАЯ ИНФРАСТРУКТУРА (VPC, ПУБЛИЧНАЯ И ПРИВАТНАЯ СУБНЕТЫ)
-# ==============================================================================
 resource "yandex_vpc_network" "k3s_network" {
-  name = "k3s-network"
+  name = "k3s-network-${local.env}"
 }
 
-# Публичная подсеть для Бастиона — трафик идет напрямую без NAT-шлюза
-resource "yandex_vpc_subnet" "k3s_public_subnet" {
-  name           = "k3s-public-subnet"
-  zone           = "ru-central1-a"
+# Создаем публичные подсети динамически (только для тех зон, которые есть в окружении)
+resource "yandex_vpc_subnet" "k3s_public_buckets" {
+  for_each       = toset(local.unique_zones)
+  name           = "k3s-public-subnet-${local.env}-${each.key}"
+  zone           = each.key
   network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.200.1.0/24"]
+  # Авто-генерация CIDR: для dev-a: 10.100.1.0/24, dev-d: 10.101.1.0/24 и т.д.
+  v4_cidr_blocks = [each.key == "ru-central1-a" ? "10.200.1.0/24" : each.key == "ru-central1-d" ? "10.201.1.0/24" : "10.203.1.0/24"]
 }
 
-resource "yandex_vpc_subnet" "k3s_public_subnet_d" {
-  name           = "k3s-public-subnet-d"
-  zone           = "ru-central1-d"
+# Создаем приватные подсети для мастеров
+resource "yandex_vpc_subnet" "k3s_private_subnets" {
+  for_each       = toset(local.unique_zones)
+  name           = "k3s-private-subnet-${local.env}-${each.key}"
+  zone           = each.key
   network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.201.1.0/24"]
-}
-
-resource "yandex_vpc_subnet" "k3s_public_subnet_e" {
-  name           = "k3s-public-subnet-e"
-  zone           = "ru-central1-e"
-  network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.203.1.0/24"]
-}
-
-# Приватная подсеть для остальных мастеров (по одной на зону) — трафик в интернет идет через NAT-шлюз
-resource "yandex_vpc_subnet" "k3s_private_subnet_a" {
-  name           = "k3s-private-subnet-a"
-  zone           = "ru-central1-a"
-  network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.200.2.0/24"]
-  route_table_id = yandex_vpc_route_table.k3s_route_table.id # Привязываем NAT-шлюз только сюда
-}
-
-resource "yandex_vpc_subnet" "k3s_private_subnet_d" {
-  name           = "k3s-private-subnet-d"
-  zone           = "ru-central1-d"
-  network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.202.2.0/24"]
   route_table_id = yandex_vpc_route_table.k3s_route_table.id
+  v4_cidr_blocks = [each.key == "ru-central1-a" ? "10.200.2.0/24" : "10.202.2.0/24"]
 }
 
-# Новая изолированная приватная подсеть строго для воркеров (по одной на зону)
-resource "yandex_vpc_subnet" "k3s_workers_subnet_a" {
-  name           = "k3s-workers-subnet-a"
-  zone           = "ru-central1-a"
+# Создаем приватные подсети для воркеров
+resource "yandex_vpc_subnet" "k3s_workers_subnets" {
+  for_each       = toset(local.unique_zones)
+  name           = "k3s-workers-subnet-${local.env}-${each.key}"
+  zone           = each.key
   network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.200.3.0/24"]
   route_table_id = yandex_vpc_route_table.k3s_route_table.id
+  v4_cidr_blocks = [each.key == "ru-central1-a" ? "10.200.3.0/24" : "10.202.3.0/24"]
 }
 
-resource "yandex_vpc_subnet" "k3s_workers_subnet_d" {
-  name           = "k3s-workers-subnet-d"
-  zone           = "ru-central1-d"
-  network_id     = yandex_vpc_network.k3s_network.id
-  v4_cidr_blocks = ["10.202.3.0/24"] # Свободный CIDR
-  route_table_id = yandex_vpc_route_table.k3s_route_table.id
-}
-
-# Создаем шлюз NAT для безопасного выхода в интернет приватных нод
+# Создаем шлюз NAT
 resource "yandex_vpc_gateway" "k3s_nat_gateway" {
-  name = "k3s-nat-gateway"
+  name = "k3s-nat-gateway-${local.env}"
   shared_egress_gateway {}
 }
 
 # Создаем таблицу маршрутизации для приватного контура
 resource "yandex_vpc_route_table" "k3s_route_table" {
-  name       = "k3s-route-table"
+  name       = "k3s-route-table-${local.env}"
   network_id = yandex_vpc_network.k3s_network.id
 
   static_route {
@@ -204,26 +194,18 @@ data "yandex_compute_image" "ubuntu" {
 }
 
 # ==============================================================================
-# 4. ВИРТУАЛЬНЫЕ МАШИНЫ (K3S MASTERS) — ПОЛНОСТЬЮ ПРИВАТНЫЕ
+# 4. ВИРТУАЛЬНЫЕ МАШИНЫ (K3S MASTERS) — С ПОДДЕРЖКОЙ ФЕЙК-ЗОН
 # ==============================================================================
-locals {
-  master_zones = ["ru-central1-a"]
-  master_subnets = [
-    yandex_vpc_subnet.k3s_private_subnet_a.id,
-  ]
-}
-
 resource "yandex_compute_instance" "k3s_masters" {
-  count       = 1
-  name        = "k3s-master-${count.index + 1}"
-  zone        = local.master_zones[count.index]
+  count       = length(local.current_zones) # Создаст 3 мастера всегда
+  name        = "k3s-master-${local.env}-${count.index + 1}"
+  zone        = local.current_zones[count.index] # На dev: а, затем d, затем снова а
   platform_id = "standard-v3"
 
-  # Метки для инвентаря Ansible
   labels = {
-    repo       = "k3s-infra-test"
+    repo       = "k3s-infra-${local.env}"
     role       = "k3s-master"
-    is_bastion = "false" # Мастера больше не являются бастионами
+    is_bastion = "false"
   }
 
   resources {
@@ -232,7 +214,6 @@ resource "yandex_compute_instance" "k3s_masters" {
     core_fraction = 20
   }
 
-  # Политика планирования для создания прерываемых (дешевых) ВМ
   scheduling_policy {
     preemptible = true
   }
@@ -246,8 +227,9 @@ resource "yandex_compute_instance" "k3s_masters" {
   }
 
   network_interface {
-    # Каждый мастер — в своей зоне и подсети
-    subnet_id          = local.master_subnets[count.index]
+    # ищет созданную подсеть по имени зоны текущего мастера.
+    # Если мастер идет в зону 'a', он спокойно сядет в существующую подсеть 'а', даже если это второй мастер в этой зоне.
+    subnet_id          = yandex_vpc_subnet.k3s_private_subnets[local.current_zones[count.index]].id
     nat                = false
     security_group_ids = [yandex_vpc_security_group.cluster_sg.id]
   }
@@ -258,23 +240,16 @@ resource "yandex_compute_instance" "k3s_masters" {
 }
 
 # ==============================================================================
-# 4.0 ВИРТУАЛЬНЫЕ МАШИНЫ (K3S WORKERS) — ДИНАМИЧЕСКОЕ МАСШТАБИРОВАНИЕ
+# 4.0 ВИРТУАЛЬНЫЕ МАШИНЫ (K3S WORKERS) — ИСПРАВЛЕНА ПРИВЯЗКА К ПОДСЕТЯМ
 # ==============================================================================
-locals {
-  worker_subnets = {
-    "ru-central1-a" = yandex_vpc_subnet.k3s_workers_subnet_a.id
-    "ru-central1-d" = yandex_vpc_subnet.k3s_workers_subnet_d.id
-  }
-}
-
 resource "yandex_compute_instance" "k3s_workers" {
   for_each    = var.k3s_workers
-  name        = "k3s-${each.key}"
+  name        = "k3s-${each.key}-${local.env}"
   zone        = each.value.zone
   platform_id = "standard-v3"
 
   labels = {
-    repo       = "k3s-infra-test"
+    repo       = "k3s-infra-${local.env}"
     role       = "k3s-worker"
     is_bastion = "false"
   }
@@ -298,8 +273,8 @@ resource "yandex_compute_instance" "k3s_workers" {
   }
 
   network_interface {
-    # ПЕРЕСАЖИВАЕМ ВОРКЕРЫ В ИЗОЛИРОВАННУЮ ПОДСЕТЬ (10.200.3.0/24)
-    subnet_id          = local.worker_subnets[each.value.zone]
+    # Динамически берем подсеть воркеров по зоне из map
+    subnet_id          = yandex_vpc_subnet.k3s_workers_subnets[each.value.zone].id
     nat                = false
     security_group_ids = [yandex_vpc_security_group.cluster_sg.id]
   }
@@ -314,8 +289,8 @@ resource "yandex_compute_instance" "k3s_workers" {
 # 4.1 ВЫДЕЛЕННЫЙ BASTION-ХОСТ ДЛЯ БЕЗОПАСНОГО ДОСТУПА ПО SSH
 # ==============================================================================
 resource "yandex_compute_instance" "bastion" {
-  name        = "k3s-bastion"
-  zone        = "ru-central1-e"
+  name        = "k3s-bastion-${local.env}"
+  zone        = local.unique_zones[0]
   platform_id = "standard-v3"
 
   labels = {
@@ -344,8 +319,8 @@ resource "yandex_compute_instance" "bastion" {
   }
 
   network_interface {
-    # Бастион сажаем строго в публичную подсеть и выдаем ему публичный IP
-    subnet_id          = yandex_vpc_subnet.k3s_public_subnet_e.id
+    # БЕРЕМ ПУБЛИЧНУЮ ПОДСЕТЬ ПО ИМЕНИ ЭТОЙ ЗОНЫ
+    subnet_id          = yandex_vpc_subnet.k3s_public_buckets[local.unique_zones[0]].id
     nat                = true
     security_group_ids = [yandex_vpc_security_group.bastion_sg.id]
   }
@@ -389,7 +364,7 @@ resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
     port        = 80
     target_port = 30360
     internal_address_spec {
-      subnet_id  = yandex_vpc_subnet.k3s_workers_subnet_a.id
+      subnet_id  = yandex_vpc_subnet.k3s_workers_subnets["ru-central1-a"].id
       ip_version = "ipv4"
     }
   }
@@ -399,7 +374,7 @@ resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
     port        = 443
     target_port = 31181
     internal_address_spec {
-      subnet_id  = yandex_vpc_subnet.k3s_workers_subnet_a.id
+      subnet_id  = yandex_vpc_subnet.k3s_workers_subnets["ru-central1-a"].id
       ip_version = "ipv4"
     }
   }
@@ -415,6 +390,12 @@ resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
       }
     }
   }
+}
+
+resource "local_file" "eso_key_file" {
+  content  = yandex_iam_service_account_key.eso_key.private_key
+  filename = "${path.module}/../ansible/eso_key.pem"
+  file_permission = "0600" # Чтобы ключ нельзя было прочитать всем подряд
 }
 
 # ==============================================================================
@@ -433,6 +414,10 @@ resource "local_file" "ansible_inventory" {
       # Ресурс воркер-нод
       k3s_workers = yandex_compute_instance.k3s_workers
 
+      eso_authorized_key = yandex_iam_service_account_key.eso_key.private_key
+      lockbox_monitoring_secret_id = yandex_lockbox_secret.monitoring_secrets.id
+      lockbox_loki_secret_id       = yandex_lockbox_secret.loki_s3.id
+
       # Передаем nlb
       k3s_ingress_nlb_internal_ip = [
         for l in yandex_lb_network_load_balancer.k3s_ingress_nlb.listener :
@@ -441,5 +426,5 @@ resource "local_file" "ansible_inventory" {
       ][0]
     }
   )
-  filename = "${path.module}/../ansible/hosts.ini"
+  filename = "${path.module}/../ansible/hosts.ini.${local.env}"
 }

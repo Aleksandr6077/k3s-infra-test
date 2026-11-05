@@ -14,9 +14,7 @@ ${server.name} ansible_host=${server.network_interface[0].ip_address} internal_i
 [all:vars]
 ansible_user=ubuntu
 ansible_ssh_private_key_file=~/.ssh/id_rsa
-
-
-
-
-
-
+eso_authorized_key="${eso_authorized_key}"
+lockbox_monitoring_secret_id="${lockbox_monitoring_secret_id}"
+lockbox_loki_secret_id="${lockbox_loki_secret_id}"
+eso_authorized_key_file=eso_key.pem

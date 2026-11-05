@@ -6,7 +6,7 @@ llm_context.txt
 .ansible_vault_pass.txt
 .kube
 local-infra/haproxy/keepalived.conf
-ansible/hosts.ini
+ansible/hosts.ini*
 ansible/.kube/
 txt_output
 # Игнорируем стейт-файлы инфраструктуры
@@ -21,7 +21,7 @@ terraform/*.tfstate.backup
 terraform/.terraform.lock.hcl
 
 # Локальные файлы переменных
-*.tfvars
+terraform.tfvars
 *.tfvars.json
 
 **/.terraform/

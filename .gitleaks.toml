@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Yandex Lockbox Secret IDs in ExternalSecret manifests (not secrets)"
+paths = [
+  '''k8s/platform/.*/secrets/externalsecret-.*\.yaml$'''
+]
+regexes = [
+  # Yandex Lockbox Secret ID format (e.g., e6qqo2c696ikmitppai2)
+  '''e[a-z0-9]{16,}'''
+]

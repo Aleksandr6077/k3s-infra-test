@@ -5,8 +5,27 @@ TOFU_DIR    := terraform
 ANSIBLE_DIR := ansible
 
 VAULT_FILE  := group_vars/all/vault.yml
+VAULT_YML   := group_vars/all/vault.yml
 PASS_FILE   := .ansible_vault_pass.txt
 SA_KEY_FILE := sa_key.json
+
+# ==============================================================================
+# УПРАВЛЕНИЕ ОКРУЖЕНИЯМИ
+# ==============================================================================
+ENV ?= prod
+VAR_FILE := $(ENV).tfvars
+
+
+# Функция для извлечения значений из Ansible Vault
+define get_vault_var
+$(shell ansible-vault view $(VAULT_YML) --vault-password-file $(PASS_FILE) 2>/dev/null | grep -E '^$(1):' | sed 's/^[^:]*: *//; s/"//g')
+endef
+
+# Экспортируем секреты в переменные окружения OpenTofu (TF_VAR_...)
+export TF_VAR_vault_grafana_admin_password = $(call get_vault_var,vault_grafana_admin_password)
+export TF_VAR_vault_TELEGRAM_BOT_TOKEN     = $(call get_vault_var,vault_TELEGRAM_BOT_TOKEN)
+export TF_VAR_vault_TELEGRAM_CHAT_ID       = $(call get_vault_var,vault_TELEGRAM_CHAT_ID)
+
 
 # Автоматический экспорт AWS-ключей для S3-бэкенда OpenTofu во все таргеты
 export AWS_ACCESS_KEY_ID     = $(shell jq -r '.access_key.id // empty' $(SA_KEY_FILE) 2>/dev/null)
@@ -38,19 +57,19 @@ vault-edit:
 	ansible-vault edit $(VAULT_FILE)
 
 ansible-check:
-	ansible-playbook -i $(ANSIBLE_DIR)/hosts.ini $(ANSIBLE_DIR)/site.yaml --syntax-check
+	ansible-playbook -i $(ANSIBLE_DIR)/hosts.ini.$(ENV) $(ANSIBLE_DIR)/site.yaml --syntax-check
 
 ansible-test:
-	ansible-playbook -i $(ANSIBLE_DIR)/hosts.ini $(ANSIBLE_DIR)/site.yaml --check --diff
+	ansible-playbook -i $(ANSIBLE_DIR)/hosts.ini.$(ENV) $(ANSIBLE_DIR)/site.yaml --check --diff
 
 ansible-deploy: tunnel
-	ansible-playbook -i $(ANSIBLE_DIR)/hosts.ini $(ANSIBLE_DIR)/site.yaml
+	ansible-playbook -i $(ANSIBLE_DIR)/hosts.ini.$(ENV) $(ANSIBLE_DIR)/site.yaml
 
 tunnel:
-	@bash scripts/tunnel.sh $(ANSIBLE_DIR)/hosts.ini
+	@bash scripts/tunnel.sh $(ANSIBLE_DIR)/hosts.ini.$(ENV)
 
 tunnel-force:
-	@bash scripts/tunnel.sh $(ANSIBLE_DIR)/hosts.ini --force
+	@bash scripts/tunnel.sh $(ANSIBLE_DIR)/hosts.ini.$(ENV) --force
 
 # =============================================================================
 # ОСНОВНЫЕ ТАРГЕТЫ УПРАВЛЕНИЯ СТЕНДОМ (YANDEX CLOUD)
@@ -63,24 +82,25 @@ init:
 	cd $(TOFU_DIR) && tofu init
 	@echo "$(GREEN)====> Инициализация завершена. Проект связан с S3 бэкендом! <====$(NC)"
 
-## up: Развертывание или обеспечение базовой HA-инфраструктуры
-up:
-	@echo "$(CYAN)====> Развертывание базовой HA-инфраструктуры в 1 поток... <====$(NC)"
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu apply -parallelism=1 -auto-approve
-	@echo "$(GREEN)====> Инфраструктура успешно обновлена! <====$(NC)"
-	@echo "$(YELLOW)Для деплоя K3s и сервисов запустите: make ansible-deploy$(NC)"
-
-## up: Развертывание или обеспечение базовой HA-инфраструктуры
-up2:
-	@echo "$(CYAN)====> Развертывание базовой HA-инфраструктуры в 1 поток... <====$(NC)"
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu apply -parallelism=1 -auto-approve -lock=false
-	@echo "$(GREEN)====> Инфраструктура успешно обновлена! <====$(NC)"
-	@echo "$(YELLOW)Для деплоя K3s и сервисов запустите: make ansible-deploy$(NC)"
-
 ## upgrade: Инициализация OpenTofu в оффлайн-режиме с валидным токеном Яндекса
 upgrade:
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu init -migrate-state
 	@echo "$(GREEN)====> Инициализация успешно завершена! <====$(NC)"
+
+workspace-setup:
+	@TF_VAR_yc_token=$$(yc iam create-token) tofu -chdir=$(TOFU_DIR) workspace select $(ENV) 2>/dev/null || \
+	TF_VAR_yc_token=$$(yc iam create-token) tofu -chdir=$(TOFU_DIR) workspace new $(ENV)
+
+up: workspace-setup
+	@echo "$(CYAN)====> Развертывание инфраструктуры [Окружение: $(ENV)]... <====$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu apply -var-file=$(VAR_FILE) -parallelism=1 -auto-approve
+	@echo "$(GREEN)====> Инициализация успешно завершена! Для деплоя make ansible-deploy ENV=dev либо prod  <====$(NC)"
+
+plan: workspace-setup
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu plan -var-file=$(VAR_FILE)
+
+down: workspace-setup
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu destroy -var-file=$(VAR_FILE) -auto-approve
 
 
 ## init-upgrade: Обновление лок-файла провайдеров (добавление новых провайдеров)
@@ -93,23 +113,19 @@ list:
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu state list
 	@echo "$(GREEN)====> Инициализация успешно завершена! <====$(NC)"
 
-plan:
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu plan
-	@echo "$(GREEN)====> План конфигурации успешно построен! <====$(NC)"
-
 plan2:
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu plan -lock=false
 	@echo "$(GREEN)====> План конфигурации успешно построен! <====$(NC)"
 
-## down: Полное уничтожение облачной инфраструктуры (OpenTofu Destroy)
-down:
-	@echo "$(RED)ВНИМАНИЕ! Это действие полностью уничтожит всю облачную инфраструктуру!$(NC)"
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu destroy -auto-approve
-	@echo "$(GREEN)====> Облачный стенд полностью уничтожен. <====$(NC)"
-## down-safe: Удалить всё, кроме S3-бакета Loki
-down-safe:
-	@echo "$(RED)Удаление стенда с сохранением бакета Loki...$(NC)"
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu destroy -auto-approve -exclude="yandex_storage_bucket.loki_chunks" -exclude="yandex_iam_service_account.loki_sa" -exclude="yandex_iam_service_account_static_access_key.loki_key"
+## down-safe: Удалить всё, кроме S3-бакета Loki и его ключей
+down-safe: workspace-setup
+	@echo "$(RED)Удаление стенда [$(ENV)] с сохранением бакета Loki...$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu destroy -var-file=$(VAR_FILE) -auto-approve \
+		-exclude="yandex_storage_bucket.loki_chunks" \
+		-exclude="yandex_iam_service_account.loki_sa" \
+		-exclude="yandex_iam_service_account_static_access_key.loki_key" \
+		-exclude="yandex_lockbox_secret.loki_s3" \
+		-exclude="yandex_lockbox_secret_version.loki_s3_v1"
 
 ## recreate: Быстрое и безопасное пересоздание инфраструктуры (down + up)
 recreate:
@@ -149,3 +165,18 @@ tunnel-kill:
 ## kubeconfig: Показать путь к kubeconfig
 kubeconfig:
 	@echo "$$HOME/pet2/.kube/config"
+
+
+## get-lockbox-ids: Показать ID секретов Lockbox для манифестов GitOps
+get-lockbox-ids:
+	@echo "$(CYAN)=== ID для Loki (вставь в externalsecret-loki.yaml) ===$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu output -raw lockbox_loki_secret_id
+	@echo ""
+	@echo "$(CYAN)=== ID для Monitoring (вставь в externalsecret-grafana.yaml) ===$(NC)"
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu output -raw lockbox_monitoring_secret_id
+	@echo ""
+
+## unlock: Принудительно снять зависшую блокировку состояния (укажи ID в переменной LOCK_ID)
+unlock:
+	@if [ -z "$(LOCK_ID)" ]; then echo "$(RED)Ошибка: укажи LOCK_ID=$(NC)"; exit 1; fi
+	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu force-unlock -force $(LOCK_ID)

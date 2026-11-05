@@ -1,5 +1,5 @@
 # ==============================================================================
-# 7. ВЫВОД ПЕРЕМЕННЫХ (OUTPUTS) 
+# 7. ВЫВОД ПЕРЕМЕННЫХ (OUTPUTS)
 # ==============================================================================
 
 output "k3s_masters_internal_ips" {
@@ -18,12 +18,8 @@ output "k3s_workers_internal_ips" {
 }
 
 output "k3s_ingress_nlb_ip" {
-  description = "Публичный IP NLB для Ingress (80/443)"
   value = [
     for listener in yandex_lb_network_load_balancer.k3s_ingress_nlb.listener :
-    [for addr in listener.external_address_spec : addr.address][0]
+    [for addr in listener.internal_address_spec : addr.address][0]
   ][0]
 }
-
-
-

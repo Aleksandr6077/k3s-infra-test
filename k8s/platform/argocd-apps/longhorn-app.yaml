@@ -16,6 +16,7 @@ spec:
       values: |
         persistence:
           defaultClassReplicaCount: 2
+          allowVolumeCreationWithDegradedAvailability: true
         defaultSettings:
           defaultReplicaCount: 2
           upgradeChecker: false
