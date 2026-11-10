@@ -29,3 +29,4 @@ terraform.tfvars
 *.tfstate.*
 .terraform.lock.hcl
 .yc-token.kube/
+ansible/eso_key.json
