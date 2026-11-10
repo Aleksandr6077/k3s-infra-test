@@ -393,9 +393,16 @@ resource "yandex_lb_network_load_balancer" "k3s_ingress_nlb" {
 }
 
 resource "local_file" "eso_key_file" {
-  content  = yandex_iam_service_account_key.eso_key.private_key
-  filename = "${path.module}/../ansible/eso_key.pem"
-  file_permission = "0600" # Чтобы ключ нельзя было прочитать всем подряд
+  content = jsonencode({
+    id                 = yandex_iam_service_account_key.eso_key.id
+    service_account_id = yandex_iam_service_account_key.eso_key.service_account_id
+    private_key        = yandex_iam_service_account_key.eso_key.private_key
+    public_key         = yandex_iam_service_account_key.eso_key.public_key
+    created_at         = yandex_iam_service_account_key.eso_key.created_at
+    key_algorithm      = yandex_iam_service_account_key.eso_key.key_algorithm
+  })
+  filename        = "${path.module}/../ansible/eso_key.json"
+  file_permission = "0600"
 }
 
 # ==============================================================================
@@ -414,7 +421,6 @@ resource "local_file" "ansible_inventory" {
       # Ресурс воркер-нод
       k3s_workers = yandex_compute_instance.k3s_workers
 
-      eso_authorized_key = yandex_iam_service_account_key.eso_key.private_key
       lockbox_monitoring_secret_id = yandex_lockbox_secret.monitoring_secrets.id
       lockbox_loki_secret_id       = yandex_lockbox_secret.loki_s3.id
 
