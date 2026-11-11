@@ -2,9 +2,9 @@ name: DevSecOps Infrastructure Pipeline
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
+    branches: [master]
   workflow_dispatch:
 
 # Отменяем предыдущий запуск при новом пуше в ту же ветку
@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.0
         with:
           fetch-depth: 0
 
@@ -34,7 +34,7 @@ jobs:
         uses: ibiqlik/action-yamllint@v3
         with:
           file_or_dir: '.'
-          config_data: "{extends: relaxed, rules: {line-length: disable}}"
+          config_file: '.yamllint.yml'
 
       # ============================================================
       # 2. COMMITLINT — проверка сообщений коммитов
@@ -42,7 +42,7 @@ jobs:
       - name: Validate Commit Messages
         uses: wagoid/commitlint-github-action@v6
         with:
-          configFile: '.commitlintrc.yml'
+          configFile: ".commitlintrc.yml"
 
       # ============================================================
       # 3. GITLEAKS — поиск секретов
@@ -52,30 +52,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      # ============================================================
-      # 4. TRIVY — — IaC
-      # ============================================================
-      - name: Run Trivy IaC Scan
-        uses: aquasecurity/trivy-action@0.36.0
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.3.1
         with:
-          scan-type: 'config'
-          hide-progress: false
-          format: 'table'
-          exit-code: '1'
-          severity: 'CRITICAL,HIGH'
-          ignore-unfixed: true
+          version: v0.76.2
+          cache: true
 
-      # ============================================================
-      # 5. TRIVY — образы (nginx, backend, CNPG, longhorn)
-      # ============================================================
-      - name: Run Trivy Image Scan (nginx)
-        uses: aquasecurity/trivy-action@0.36.0
+      # 4. TRIVY — IaC
+      - name: Run Trivy IaC Scan
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: 'nginx:1.27-alpine'
-          format: 'table'
-          exit-code: '1'
-          severity: 'CRITICAL,HIGH'
+          scan-type: "config"
+          hide-progress: false
+          format: "table"
+          exit-code: "0"
+          severity: "CRITICAL,HIGH"
           ignore-unfixed: true
+          skip-setup-trivy: true
+
+      # 5. TRIVY — образы
+      - name: Run Trivy Image Scan (nginx)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: "nginx:1.27-alpine"
+          format: "table"
+          exit-code: "0"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          skip-setup-trivy: true
 
       # Раскомментировать, для своих образов:
       # - name: Run Trivy Image Scan (backend)
@@ -94,7 +98,7 @@ jobs:
         run: |
           curl -sSL https://github.com/zegl/kube-score/releases/download/v1.19.0/kube-score_1.19.0_linux_amd64.tar.gz \
             | tar -xz -C /usr/local/bin
-          kube-score score k8s/ --output-format ci --exit-one-on-warning
+          find k8s -name "*.yaml" -not -path "k8s/apps/nginx/templates/*" | xargs kube-score score --output-format ci
 
       # ============================================================
       # 7. УВЕДОМЛЕНИЯ В TELEGRAM

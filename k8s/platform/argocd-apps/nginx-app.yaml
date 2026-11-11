@@ -7,10 +7,10 @@ metadata:
     argocd.argoproj.io/manifest-generate-paths: k8s/apps/nginx
 spec:
   project: default # Логическая группировка внутри ArgoCD
-  
+
   # 1. Желаемое состояние
   source:
-    repoURL: 'https://github.com/Aleksandr6077/k3s-infra-test'
+    repoURL: "https://github.com/Aleksandr6077/k3s-infra-test"
     targetRevision: HEAD
     path: k8s/apps/nginx
     helm:
@@ -19,13 +19,13 @@ spec:
 
     # 2. Реальное состояние
   destination:
-    server: 'https://kubernetes.default.svc'
+    server: "https://kubernetes.default.svc"
     namespace: default
 
   # 3. ПОЛИТИКА СИНХРОНИЗАЦИИ (Автоматизация)
   syncPolicy:
     automated:
-      prune: true    # Если удалить pvc.yaml из Git, ArgoCD сам удалит PVC из кластера
+      prune: true # Если удалить pvc.yaml из Git, ArgoCD сам удалит PVC из кластера
       selfHeal: true # Если кто-то руками изменит манифест в кластере, ArgoCD вернет всё как в Git
     syncOptions:
       - CreateNamespace=true # Если целевого namespace нет, ArgoCD создаст его сам

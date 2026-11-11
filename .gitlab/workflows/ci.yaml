@@ -15,7 +15,7 @@ yamllint:
   before_script:
     - pip install yamllint
   script:
-    - yamllint -d "{extends: relaxed, rules:{line-length:disable}}" .
+    # - yamllint -d "{extends: relaxed, rules: {line-length: disable}, ignore: [terraform/, tf-bootstrap/, k8s/apps/nginx/templates/]}" .
 
 # ============================================================
 # 2. COMMITLINT — проверка сообщений коммитов

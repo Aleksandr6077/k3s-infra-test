@@ -1,0 +1,20 @@
+extends: relaxed
+
+rules:
+  line-length: disable
+  comments:
+    min-spaces-from-content: 1
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+  document-start: disable
+  trailing-spaces: enable
+  empty-lines:
+    max: 2
+    max-start: 0
+    max-end: 0
+
+ignore: |
+  terraform/
+  tf-bootstrap/
+  k8s/apps/nginx/templates/

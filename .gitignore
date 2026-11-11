@@ -1,6 +1,4 @@
 sa_key.json
-.yamllint.yml
-.commitlintrc.yml
 collect.py
 llm_context.txt
 .ansible_vault_pass.txt

@@ -84,7 +84,6 @@ resource "yandex_vpc_route_table" "k3s_route_table" {
   }
 }
 
-
 # ==============================================================================
 # 2. ФАЙРВОЛ (РАЗДЕЛЬНЫЕ SECURITY GROUPS ПО РОЛЯМ)
 # ==============================================================================
@@ -132,7 +131,6 @@ resource "yandex_vpc_security_group" "nlb_sg" {
     port           = 31181
   }
 }
-
 
 # ГРУППА 2: Периметр для нод кластера
 resource "yandex_vpc_security_group" "cluster_sg" {
@@ -283,7 +281,6 @@ resource "yandex_compute_instance" "k3s_workers" {
     ssh-keys = "ubuntu:${var.ssh_public_key != "" ? var.ssh_public_key : file(var.ssh_public_key_path)}"
   }
 }
-
 
 # ==============================================================================
 # 4.1 ВЫДЕЛЕННЫЙ BASTION-ХОСТ ДЛЯ БЕЗОПАСНОГО ДОСТУПА ПО SSH

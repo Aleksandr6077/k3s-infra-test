@@ -2,9 +2,9 @@ name: DevSecOps Infrastructure Pipeline
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
+    branches: [master]
   workflow_dispatch:
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
       - name: Validate YAML Syntax
         uses: ibiqlik/action-yamllint@v3
         with:
-          file_or_dir: '.'
+          file_or_dir: "."
           config_data: "{extends: relaxed, rules: {line-length: disable}}"
 
       # 2. Сканирование секретов через официальный легковесный экшен GitLeaks (без go build!)
@@ -34,10 +34,10 @@ jobs:
       - name: Run Trivy Vulnerability Scanner (IaC)
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: 'config'
+          scan-type: "config"
           hide-progress: false
-          format: 'table'
-          exit-code: '1' # Упасть, если найдены критические уязвимости
+          format: "table"
+          exit-code: "1" # Упасть, если найдены критические уязвимости
           ignore-unfixed: true
 
       # 4. Реальный запуск Kube-score для анализа манифестов k8s на Best Practices
@@ -46,7 +46,7 @@ jobs:
           echo "→ Скачиваем kube-score..."
           curl -sLO https://github.com/zegl/kube-score/releases/download/v1.18.0/kube-score_1.18.0_linux_amd64.tar.gz
           tar -xzf kube-score_1.18.0_linux_amd64.tar.gz
-          
+
           echo "→ Анализируем манифесты в k8s/apps/..."
           ./kube-score score k8s/apps/nginx/*.yaml --ignore-container-cpu-limit
 
@@ -74,25 +74,3 @@ jobs:
           -d chat_id="${TELEGRAM_CHAT_ID}" \
           -d parse_mode="HTML" \
           -d text="❌ <b>Пайплайн k3s-infra-test ЗАВАЛЕН!</b>%0AПроверьте логи сборки безопасности.%0A<b>Автор коммита:</b> ${{ github.actor }}"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -474,11 +474,20 @@ https://gitverse.ru/swtr/rest/api/unit/files/v1/download?fileId=c771f46d-3de0-42
 - **perf для Воркеров и Мастеров:** — теперь на SSD дисках, а так же по 4GB RAM.
 - **nginx-gitops-app:** - вместо local-path теперь на `storageClassName: longhorn`
 
+## ✅ 5. Changelog: Этап 16
+
+### Добавлено
+
+- Реализована поддержка мультиокружений: `dev` (1 мастер) и `prod` (3 мастера) через Terraform Workspaces.
+- Настроена синхронизация секретов через **Yandex Lockbox + External Secrets Operator (ESO)**.
+- Уведомление по этапу CI в Telegram.
+
 
 ## 🚦 Текущий статус проекта
 
 ### Проект находится в облачной инфре Yandex Cloud.
 
- - скелет GitOps-пайплайна готов к использованию.
- - Реализована GitOps-петля: ArgoCD отслеживает состояние манифестов в `k8s/apps/nginx/`
- - Идёт переход на концепцию `App of Apps`
+ - Скелет GitOps-пайплайна готов к использованию
+ - Реализован паттерн `App of Apps`: ArgoCD управляет дочерними приложениями (ESO, Loki, Monitoring, Longhorn) из корневого манифеста. Идёт отладка интеграции с Yandex Lockbox.
+ - Реализована `GitOps-петля`: ArgoCD отслеживает состояние всех манифестов (App of Apps), включая Nginx, мониторинг и логирование.
+ - Идёт финальная отладка Loki и Grafana на dev-стенде.
