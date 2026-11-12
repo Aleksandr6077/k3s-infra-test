@@ -52,6 +52,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_CONFIG: .gitleaks.toml
 
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@v0.3.1
