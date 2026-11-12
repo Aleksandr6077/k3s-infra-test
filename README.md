@@ -231,11 +231,11 @@ k3s-infra-test/
 Реализован пайплайн статического анализа (`/workflows/ci.yaml`).
 
 ### 🔄 Этапы пайплайна:
- - Linting & Syntax (yamllint).
- - Secret Scanning (Gitleaks).
- - Security Scanner (Trivy).
- - K8s Best Practices (Kube-score).
- - Notifications (Telegram).
+ - Linting & Syntax (yamllint). - ВАЛИДАЦИЯ YAML + COMMITLINT — проверка сообщений коммитов
+ - Secret Scanning (Gitleaks). - поиск секретов
+ - Security Scanner (Trivy). - сканирование
+ - K8s Best Practices (Kube-score). - best practices для k8s-манифестов
+ - Notifications (Telegram). - уведомления об успехе или завале пайплайна.
 
 ---
 
