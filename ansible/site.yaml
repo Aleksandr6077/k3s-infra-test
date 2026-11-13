@@ -169,9 +169,16 @@
         server_side_apply:
           field_manager: ansible
 
-    - name: Ожидание стабилизации API-схем ArgoCD
-      ansible.builtin.pause:
-        seconds: 15
+    - name: Ожидание полной готовности ArgoCD Server
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ playbook_dir }}/../.kube/config"
+        kind: Deployment
+        name: argocd-server
+        namespace: argocd
+      register: argocd_status
+      until: argocd_status.resources[0].status.readyReplicas | default(0) > 0
+      retries: 30
+      delay: 10
 
     # ---- Сначала готовим ESO-инфраструктуру, потом Root App ----
     - name: Создание namespace для ESO
