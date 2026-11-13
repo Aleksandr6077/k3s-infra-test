@@ -113,10 +113,6 @@ list:
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu state list
 	@echo "$(GREEN)====> Инициализация успешно завершена! <====$(NC)"
 
-plan2:
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu plan -lock=false
-	@echo "$(GREEN)====> План конфигурации успешно построен! <====$(NC)"
-
 ## down-safe: Удалить всё, кроме S3-бакета Loki и его ключей
 down-safe: workspace-setup
 	@echo "$(RED)Удаление стенда [$(ENV)] с сохранением бакета Loki...$(NC)"
@@ -140,23 +136,6 @@ apply:
 	@echo "$(RED)Делеаем apply...(lock false)$(NC)"
 	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu apply -lock=false
 
-deletedb:
-	@echo "$(RED)Сносим бд в папке терраформа$(NC)"
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu state rm yandex_ydb_database_serverless.tf_state_lock
-
-taint:
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu taint yandex_compute_instance.bastion
-
-
-testgitops:
-	cd $(TOFU_DIR) && TF_VAR_yc_token=$$(yc iam create-token) tofu output -raw k3s_ingress_nlb_ip
-
-## clean-s3: Очистка S3-бакетов (бэкапы PG, tfstate)
-clean-s3:
-	@echo "$(YELLOW)Очистка S3-бакетов...$(NC)"
-	@read -p "Уверен? [y/N] " ans && [ "$$ans" = "y" ] || exit 1
-	yc storage s3api rm --bucket <bucket-name> --recursive || true
-
 ## tunnel-kill: Убить SSH-туннель
 tunnel-kill:
 	-@pkill -f "ssh.*-L 6443" 2>/dev/null || true
@@ -164,8 +143,7 @@ tunnel-kill:
 
 ## kubeconfig: Показать путь к kubeconfig
 kubeconfig:
-	@echo "$$HOME/pet2/.kube/config"
-
+	@echo "$(CURDIR)/.kube/config"
 
 ## get-lockbox-ids: Показать ID секретов Lockbox для манифестов GitOps
 get-lockbox-ids:
